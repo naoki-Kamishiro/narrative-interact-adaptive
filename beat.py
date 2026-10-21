@@ -170,7 +170,8 @@ def inject(messages: list, queue: list, ptr: int) -> tuple[list, str | None]:
             msgs[i]["content"] = msgs[i]["content"] + f"\n（GMへの場面指示: {injection}）"
             break
 
-    debug = f"[BEAT] ptr={ptr} type={beat['type']} timing={beat['timing']}"
+    beat_type = beat.get("type", "injection")
+    debug = f"[BEAT] ptr={ptr} type={beat_type} timing={beat.get('timing', '-')}"
     return msgs, debug
 
 
@@ -211,7 +212,7 @@ def advance(queue: list, ptr: int, response: str) -> tuple[list, int]:
 
     beat = queue[actual_idx]
 
-    if beat["type"] == "character":
+    if beat.get("type") == "character":
         name = beat.get("name", "")
         if detect_character(response, name):
             queue[actual_idx]["done"] = True
