@@ -126,6 +126,9 @@ def build_queue(plot: dict) -> list:
 
 def make_injection(beat: dict) -> str:
     """ビートから注入文を生成する。"""
+    # adaptiveモードの再生成ビートはinjectionフィールドを直接持つ
+    if "injection" in beat:
+        return beat["injection"]
     t = beat["type"]
     tmpl = _TEMPLATES.get(t, "")
     if t == "character":
