@@ -427,6 +427,21 @@ def _build_api_messages(h: list) -> list:
                 if s.get("deviation_count", 0) > 0:
                     state.update({"deviation_count": 0})
 
+    # off/adaptive(再生成前)/improvモード: ターン数過多→収束injection（25ターン超）
+    if not _is_strong():
+        turn_count = sum(1 for m in h if m["role"] == "user")
+        if turn_count > 25:
+            msgs = list(hist.build_for_api(h))
+            injection = "物語が長くなっている。現在の状況から自然にエンディングへ収束させること。"
+            for i in reversed(range(len(msgs))):
+                if msgs[i]["role"] == "user":
+                    msgs[i] = dict(msgs[i])
+                    msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
+                    break
+            if DEBUG_MODE:
+                print(f"[TURN_LIMIT] turn={turn_count}: injecting convergence prompt", file=sys.stderr)
+            return msgs
+
     # off/adaptive(再生成前)/improvモード・自動プレイ時のみ: 固執ループ検出→エンディング強制injection
     if not _is_strong() and AUTO_PLAY_MODE:
         recent = _get_recent_player_actions(h, n=3)

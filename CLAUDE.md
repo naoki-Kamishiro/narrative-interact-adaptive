@@ -475,3 +475,12 @@ onモードの根本問題（逸脱後に終われない・ターン数上限到
 - adaptive処理はすべて `if _is_adaptive():` ブロックで完全分離
 - SYSTEM_GM_BASE（固定層）への変更ゼロ
 - strongのPLOT_MODE_RULESへの変更ゼロ
+
+### 2026年10月（今セッション）：ターン数過多への収束injection追加
+
+SF「星霜の残響」（adaptive/normal）で逸脱ゼロ・固執ゼロのまま40ターン上限に達した。
+原因：プレイヤーが真面目にプロットを追っているが、GMが自力で物語を収束・終了させられなかった。
+
+- `main.py` の `_build_api_messages()` に追加：ターン数が25を超えたら毎ターン「現在の状況から自然にエンディングへ収束させること」のinjectionを挿入
+- `_is_strong()` がFalseのとき（off/adaptive/improvのみ）に発動
+- strongへの影響ゼロ
