@@ -148,8 +148,12 @@ def _get_plot_keywords(plot: dict) -> list[str]:
         if isinstance(c, dict) and c.get("content"):
             keywords.append(c["content"][:30])
     ending = plot.get("ending", "")
-    if ending:
+    if isinstance(ending, str) and ending:
         keywords.append(ending[:30])
+    elif isinstance(ending, dict):
+        scene = ending.get("scene", "") or ending.get("description", "") or ending.get("content", "")
+        if scene:
+            keywords.append(scene[:30])
     return keywords[:5]  # 最大5キーワード
 
 
