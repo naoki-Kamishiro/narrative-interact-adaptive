@@ -221,7 +221,10 @@ def _build_adaptive_beat_queue(new_plot: dict) -> list:
             "description": desc,
             "timing": timing,
             "done": False,
-            "injection": f"（GMへの場面指示: {desc}）",
+            "injection": (
+                f"（GMへの誘導: 「{desc}」という展開に自然につながるよう場面を進めること。"
+                f"ただしプレイヤーの行動は必ず受理すること。）"
+            ),
         })
     # 着地点をファイナルビートとして追加
     ending = new_plot.get("ending_scene", "")
