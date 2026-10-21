@@ -426,3 +426,52 @@ GMが「情報獲得」を「目標達成」と誤解してエンディングを
 
 - off/on/improvの各PLOT_MODE_RULESに追加：「直前のターンで新たな目標・手掛かり・情報が提示された場合、それを無視してエンディングにしない」
 - strongには一切触れない
+
+### 2026年10月（フォークリポジトリ naoki-Kamishiro/narrative-interact-adaptive）：adaptiveモード実装
+
+onモードの根本問題（逸脱後に終われない・ターン数上限到達）を解決するため、`narrative-interact-adaptive` リポジトリにフォークしてadaptiveモードを新設。onモードをadaptiveで置き換え（UIも内部plot_mode名も）。
+
+**adaptiveモードの設計思想**
+- 逸脱を「失敗」ではなく「物語の転換点」として扱う
+- 逸脱が大きいと判断したら、直近の展開で新しいプロットを再生成してbeat制御で着地させる
+- 再生成後はstrongモードと同等の着地保証（完全にターン上限を回避）
+- ジャンル変化OK（ギャグ→神話など）
+
+**逸脱検出の仕組み（2段階）**
+- 毎ターン `check_deviation()` を呼び出してyes/no判定（temperature=0.0, max_tokens=4）
+- deviation_count >= 3：警告injection（「物語を元の流れへ戻すか、現在地で新展開を作ること」）
+- deviation_count >= 5：`_do_adaptive_replot()` でプロット再生成 → beat制御に移行
+
+**再生成プロットの仕様**
+- `regenerate_plot(direct近20メッセージ, genre)` → JSON形式の新プロット
+- 返却フォーマット：new_genre, protagonist_goal, key_npc, climax_situation, ending_scene, beats（3件）
+- 再生成後はhistory先頭のsystemメッセージを新プロット用プロンプトに差し替え
+- `adaptive_replotted=True` にセット → 以降の逸脱判定は行わない
+
+**変更ファイル**
+
+`state.py`：
+- `init()` に `deviation_count: 0`、`adaptive_replotted: False` を追加
+
+`api.py`：
+- `check_deviation(actions, plot_keywords) -> bool` を追加（check_fixationと同様の軽量LLM呼び出し）
+- `regenerate_plot(recent_history, genre) -> dict` を追加（max_tokens=1024, temperature=0.7）
+
+`prompt.py`：
+- PLOT_MODE_RULES の `"on"` キーを `"adaptive"` に変更（内容はoff/on系のルールを継承）
+- `build_adaptive_replot_system_prompt(new_plot, genre) -> str` を追加（strongと同等のPLOT_MODE_RULES適用）
+
+`main.py`：
+- PLOT_MODE_LABELS: `"2": ("adaptive", "プロット参照・適応（逸脱を検出して現在地で物語を再構成）")`
+- `_is_adaptive() -> bool` を追加
+- `_get_plot_keywords(plot) -> list[str]` を追加（逸脱判定用キーワード最大5件を抽出）
+- `_do_adaptive_replot(h) -> None` を追加（プロット再生成・systemプロンプト差し替え・beatキュー構築）
+- `_build_adaptive_beat_queue(new_plot) -> list` を追加（再生成プロットからビートキューを動的生成）
+- `_build_api_messages()` にadaptive逸脱検出ロジックを追加（fixation処理の直前、strongは非影響）
+- `_after_reply()` のbeat進行条件を `_is_strong() or (_is_adaptive() and adaptive_replotted)` に拡張
+- エンディング抑止3箇所を `_use_beat_suppression` に統一（adaptive_replotted時もbeat抑止を適用）
+
+**strongへの影響**
+- adaptive処理はすべて `if _is_adaptive():` ブロックで完全分離
+- SYSTEM_GM_BASE（固定層）への変更ゼロ
+- strongのPLOT_MODE_RULESへの変更ゼロ

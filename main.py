@@ -10,10 +10,10 @@ import state
 import history as hist
 import plot as plot_mod
 import save as save_mod
-from api import chat, chat_player, generate_genre_title, check_fixation
+from api import chat, chat_player, generate_genre_title, check_fixation, check_deviation, regenerate_plot
 import random
 from display import gm_print, system_print, error_print, hr
-from prompt import build_start_message
+from prompt import build_start_message, build_adaptive_replot_system_prompt
 import dice as dice_mod
 import beat as beat_mod
 
@@ -133,6 +133,108 @@ def _is_strong() -> bool:
     return state.get_plot_mode() == "strong"
 
 
+def _is_adaptive() -> bool:
+    return state.get_plot_mode() == "adaptive"
+
+
+def _get_plot_keywords(plot: dict) -> list[str]:
+    """プロットから逸脱判定用のキーワードリストを生成する。"""
+    keywords = []
+    protagonist = plot.get("protagonist", {})
+    if protagonist.get("goal_surface"):
+        keywords.append(protagonist["goal_surface"])
+    conflicts = plot.get("conflicts", [])
+    for c in conflicts:
+        if isinstance(c, dict) and c.get("content"):
+            keywords.append(c["content"][:30])
+    ending = plot.get("ending", "")
+    if ending:
+        keywords.append(ending[:30])
+    return keywords[:5]  # 最大5キーワード
+
+
+def _do_adaptive_replot(h: list) -> None:
+    """adaptiveモード: 逸脱が大きいと判断した時点でプロットを再生成し、
+    stateを更新してbeatキューを構築する。
+    """
+    import beat as beat_mod_inner
+    s = state.get()
+    genre = s.get("genre", "")
+
+    system_print("（逸脱を検出しました。現在の展開から新しい物語の着地点を生成します...）")
+
+    # 直近10ターン分の会話履歴を渡す（systemは除く）
+    recent = [m for m in h if m["role"] in ("user", "assistant")][-20:]
+    new_plot = regenerate_plot(recent, genre)
+
+    if not new_plot:
+        system_print("（プロット再生成に失敗しました。そのまま続行します。）")
+        state.update({"adaptive_replotted": True, "deviation_count": 0})
+        return
+
+    if DEBUG_MODE:
+        import json as _json
+        print(f"[ADAPTIVE] new_plot: {_json.dumps(new_plot, ensure_ascii=False)}", file=sys.stderr)
+
+    new_genre = new_plot.get("new_genre", genre)
+
+    # 新プロットをstateに保存
+    state.update({
+        "adaptive_replotted": True,
+        "adaptive_new_plot": new_plot,
+        "adaptive_new_genre": new_genre,
+        "deviation_count": 0,
+        # beat制御: 新プロットからシンプルなビートキューを構築
+        "beat_queue": _build_adaptive_beat_queue(new_plot),
+        "beat_ptr": 0,
+        "ending_suppressed": False,
+        "ending_prompted": False,
+    })
+
+    # システムプロンプトを新プロット用に差し替える（history先頭のsystemメッセージ）
+    new_sys_prompt = build_adaptive_replot_system_prompt(new_plot, new_genre)
+    for i, m in enumerate(h):
+        if m["role"] == "system":
+            h[i] = {"role": "system", "content": new_sys_prompt}
+            break
+
+    system_print(f"（新しい着地点を設定しました: {new_plot.get('ending_scene', '')[:40]}...）")
+
+
+def _build_adaptive_beat_queue(new_plot: dict) -> list:
+    """再生成プロットからシンプルなビートキューを構築する。"""
+    beats = new_plot.get("beats", [])
+    queue = []
+    for i, b in enumerate(beats):
+        if not isinstance(b, dict):
+            continue
+        desc = b.get("description", "")
+        timing = b.get("timing", "")
+        if not desc:
+            continue
+        queue.append({
+            "id": f"adaptive_beat_{i}",
+            "description": desc,
+            "timing": timing,
+            "done": False,
+            "injection": f"（GMへの場面指示: {desc}）",
+        })
+    # 着地点をファイナルビートとして追加
+    ending = new_plot.get("ending_scene", "")
+    if ending:
+        queue.append({
+            "id": "adaptive_ending",
+            "description": ending,
+            "timing": "エンディング",
+            "done": False,
+            "injection": (
+                f"（GMへの場面指示: 着地点「{ending}」の結末を迎えてください。"
+                f"物語が完結した場合は最後の1行に「【エンディング】」とのみ出力すること。）"
+            ),
+        })
+    return queue
+
+
 def _get_recent_player_actions(history: list, n: int = 5) -> list[str]:
     """履歴からプレイヤー（user）の発言を直近n件取得する。
     開始メッセージ（先頭）・ダイスタグ・システム括弧行を除外し、各メッセージの1行目のみ返す。
@@ -220,7 +322,112 @@ def _build_api_messages(h: list) -> list:
             if DEBUG_MODE:
                 print(f"[BEAT] post-ending injection (turn {post_count})", file=sys.stderr)
         return msgs
-    # off/on/improvモード・自動プレイ時のみ: 固執ループ検出→エンディング強制injection
+    # adaptiveモード: 逸脱検出 → 警告injection → プロット再生成 → beat着地
+    if _is_adaptive():
+        s = state.get()
+        adaptive_replotted = s.get("adaptive_replotted", False)
+
+        if adaptive_replotted:
+            # 再生成後はstrongと同様のbeat injection方式で着地させる
+            queue = s.get("beat_queue", [])
+            ptr = s.get("beat_ptr", 0)
+            msgs, debug = hist.build_for_api_with_beat(h, queue, ptr)
+            if debug and DEBUG_MODE:
+                print(debug, file=sys.stderr)
+            # キュー枯渇時のエンディング促進（strongと同じロジック）
+            queue_exhausted = queue and beat_mod.get_current_beat(queue, ptr) is None
+            if queue_exhausted and not s.get("ending_prompted", False):
+                new_plot = s.get("adaptive_new_plot", {})
+                ending = new_plot.get("ending_scene", "")
+                injection = (
+                    f"全ての展開が出揃いました。"
+                    f"着地点「{ending}」に向けて物語を完結させてください。"
+                    f"完結した場合は最後の1行に「【エンディング】」とのみ出力すること。"
+                ) if ending else (
+                    "全ての展開が出揃いました。物語を自然な完結へ向けて一歩進めてください。"
+                    "完結した場合は最後の1行に「【エンディング】」とのみ出力してください。"
+                )
+                msgs = [dict(m) for m in msgs]
+                for i in reversed(range(len(msgs))):
+                    if msgs[i]["role"] == "user":
+                        msgs[i] = dict(msgs[i])
+                        msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
+                        break
+                state.update({"ending_prompted": True, "post_prompt_count": 0})
+                if DEBUG_MODE:
+                    print("[ADAPTIVE] queue exhausted: injecting ending prompt", file=sys.stderr)
+            elif queue_exhausted and s.get("ending_prompted", False):
+                post_count = s.get("post_prompt_count", 0) + 1
+                state.update({"post_prompt_count": post_count})
+                new_plot = s.get("adaptive_new_plot", {})
+                ending = new_plot.get("ending_scene", "")
+                if post_count >= 2:
+                    injection = (
+                        f"【必須】このターンで物語を完結させてください。"
+                        f"新たな障壁を追加せず、必ずこのターンで締めくくること。"
+                        f"最後の1行に必ず「【エンディング】」とのみ出力してください。"
+                    )
+                else:
+                    injection = (
+                        f"着地点「{ending}」に向けて物語をクロージングへ導いてください。"
+                        f"完結した場合は最後の1行に「【エンディング】」とのみ出力すること。"
+                    ) if ending else (
+                        "物語をクロージングへ導いてください。完結した場合は最後の1行に「【エンディング】」とのみ出力してください。"
+                    )
+                msgs = [dict(m) for m in msgs]
+                for i in reversed(range(len(msgs))):
+                    if msgs[i]["role"] == "user":
+                        msgs[i] = dict(msgs[i])
+                        msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
+                        break
+                if DEBUG_MODE:
+                    print(f"[ADAPTIVE] post-ending injection (turn {post_count})", file=sys.stderr)
+            return msgs
+
+        # 再生成前: 毎ターン逸脱判定（AUTO_PLAY_MODEに関わらず判定する）
+        recent = _get_recent_player_actions(h, n=3)
+        if len(recent) >= 3:
+            plot = s.get("plot", {})
+            keywords = _get_plot_keywords(plot)
+            if check_deviation(recent, keywords):
+                deviation_count = s.get("deviation_count", 0) + 1
+                state.update({"deviation_count": deviation_count})
+                if DEBUG_MODE:
+                    print(f"[ADAPTIVE] deviation_count={deviation_count}", file=sys.stderr)
+
+                if deviation_count >= 5:
+                    # プロット再生成 → beat着地モードへ
+                    _do_adaptive_replot(h)
+                    # 再生成直後はビートキューの先頭を注入
+                    s2 = state.get()
+                    queue = s2.get("beat_queue", [])
+                    ptr = s2.get("beat_ptr", 0)
+                    msgs, debug = hist.build_for_api_with_beat(h, queue, ptr)
+                    if debug and DEBUG_MODE:
+                        print(debug, file=sys.stderr)
+                    return msgs
+                elif deviation_count >= 3:
+                    # 警告injection: GMに収束を促す
+                    msgs = list(hist.build_for_api(h))
+                    injection = (
+                        "プレイヤーの行動がプロットから離れてきています。"
+                        "現在の状況から自然にエンディングへつながる展開を意識してください。"
+                        "エンディングの機会があれば迷わず終わらせること。"
+                    )
+                    for i in reversed(range(len(msgs))):
+                        if msgs[i]["role"] == "user":
+                            msgs[i] = dict(msgs[i])
+                            msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
+                            break
+                    if DEBUG_MODE:
+                        print(f"[ADAPTIVE] warning injection at count={deviation_count}", file=sys.stderr)
+                    return msgs
+            else:
+                # 逸脱解消されたらカウントをリセット
+                if s.get("deviation_count", 0) > 0:
+                    state.update({"deviation_count": 0})
+
+    # off/adaptive(再生成前)/improvモード・自動プレイ時のみ: 固執ループ検出→エンディング強制injection
     if not _is_strong() and AUTO_PLAY_MODE:
         recent = _get_recent_player_actions(h, n=3)
         if len(recent) >= 3 and check_fixation(recent):
@@ -256,8 +463,9 @@ def _build_api_messages(h: list) -> list:
 
 
 def _after_reply(reply: str) -> None:
-    """strongモード: GM応答後にビートポインタを進める。"""
-    if not _is_strong():
+    """strongモード / adaptive再生成後: GM応答後にビートポインタを進める。"""
+    is_beat_mode = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False))
+    if not is_beat_mode:
         return
     s = state.get()
     queue = s.get("beat_queue", [])
@@ -318,7 +526,7 @@ def check_ending(reply: str) -> bool:
 
 PLOT_MODE_LABELS = {
     "1": ("off", "プロット参照・自由"),
-    "2": ("on", "プロット参照・緩拘束"),
+    "2": ("adaptive", "プロット参照・適応（逸脱を検出して現在地で物語を再構成）"),
     "3": ("strong", "プロット参照・強拘束"),
     "4": ("improv", "プロットなし・即興"),
 }
@@ -328,7 +536,7 @@ def ask_plot_mode() -> str:
     print()
     print("物語の軸:")
     print(f"  1. プロット参照・自由{exp_note}")
-    print(f"  2. プロット参照・緩拘束（プロットに添うが逸脱プレイ可能）{exp_note}")
+    print(f"  2. プロット参照・適応（逸脱を検出して現在地で物語を再構成）{exp_note}")
     print("  3. プロット参照・強拘束（プロット強制回収）★初めてならこれを推奨")
     print(f"  4. プロットなし・即興{exp_note}")
     while True:
@@ -645,7 +853,8 @@ def run_single_session(plot_mode: str) -> None:
         _after_reply(reply)
 
         if check_ending(reply):
-            if _is_strong() and not state.get().get("ending_suppressed", False):
+            _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False))
+            if _use_beat_suppression and not state.get().get("ending_suppressed", False):
                 s = state.get()
                 queue = s.get("beat_queue", [])
                 ptr = s.get("beat_ptr", 0)
@@ -858,7 +1067,8 @@ def main():
             h = hist.add_assistant(h, reply)
             _after_reply(reply)
             if check_ending(reply):
-                if _is_strong() and not state.get().get("ending_suppressed", False):
+                _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False))
+                if _use_beat_suppression and not state.get().get("ending_suppressed", False):
                     s = state.get()
                     queue = s.get("beat_queue", [])
                     ptr = s.get("beat_ptr", 0)
@@ -923,8 +1133,9 @@ def main():
         _after_reply(reply)
 
         if check_ending(reply):
-            # strongモードのエンディング早出し抑止
-            if _is_strong() and not state.get().get("ending_suppressed", False):
+            # strong / adaptive再生成後のエンディング早出し抑止
+            _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False))
+            if _use_beat_suppression and not state.get().get("ending_suppressed", False):
                 s = state.get()
                 queue = s.get("beat_queue", [])
                 ptr = s.get("beat_ptr", 0)

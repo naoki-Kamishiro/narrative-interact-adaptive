@@ -201,7 +201,7 @@ PLOT_MODE_RULES = {
         "- プレイヤーが主要な葛藤とは無関係な場所・状況で、物語として完結できる着地点（関係の変化・決断・帰着）に達した場合、GMはそれをエンディングとして受け入れてよい\n"
         "- 直前のターンで新たな目標・手掛かり・情報が提示された場合、それを無視してエンディングにしない"
     ),
-    "on": (
+    "adaptive": (
         "- プロットにあるものは必ず意識する\n"
         "- プロットの未登場人物・未発生の反転・未提示の重要選択は、プレイヤーの行動の結果として自然に出会う場面・偶然の状況・世界の動きとして描写に組み込んでよい\n"
         "- プロットの重要選択・反転は、プレイヤーが関連する行動・場所・人物に触れたタイミングで発生させること\n"
@@ -237,6 +237,49 @@ PLOT_MODE_RULES = {
         "- 直前のターンで新たな目標・手掛かり・情報が提示された場合、それを無視してエンディングにしない"
     ),
 }
+
+def build_adaptive_replot_system_prompt(new_plot: dict, genre: str = "") -> str:
+    """adaptiveモードでプロット再生成後に使う軽量システムプロンプトを生成する。
+    元プロットのビート・反転等は渡さず、新着地点のみ渡す。
+    """
+    lines = [SYSTEM_GM_BASE]
+
+    # adaptive再生成後はstrongと同等のルールを適用
+    mode_rule = PLOT_MODE_RULES.get("strong", "")
+    if mode_rule:
+        lines.append("【物語の軸】")
+        lines.append(mode_rule)
+
+    if genre:
+        lines.append("【文体】")
+        lines.append(f"- ジャンル「{genre}」の読み手にとって自然な語り口・語彙の硬さ・文の長さで書く。")
+
+    if new_plot:
+        lines.append("")
+        lines.append("【新プロット（GMのみが知る設計図）】")
+        lines.append("※プレイヤーの逸脱を受けて再設計された物語の着地点。以下に向けて確実に完結させること。")
+
+        if new_plot.get("protagonist_goal"):
+            lines.append(f"- 主人公の現在の目標: {new_plot['protagonist_goal']}")
+        if new_plot.get("key_npc"):
+            lines.append(f"- 重要NPC: {new_plot['key_npc']}")
+        if new_plot.get("climax_situation"):
+            lines.append(f"- クライマックス: {new_plot['climax_situation']}")
+        if new_plot.get("ending_scene"):
+            lines.append(f"- 着地点（情景のみ）: {new_plot['ending_scene']}")
+
+        beats = new_plot.get("beats", [])
+        if beats:
+            lines.append("")
+            lines.append("【展開の流れ（ビート）】")
+            for b in beats:
+                if isinstance(b, dict):
+                    timing = b.get("timing", "")
+                    desc = b.get("description", "")
+                    lines.append(f"- {timing}: {desc}")
+
+    return "\n".join(lines)
+
 
 def build_system_prompt(plot: dict, plot_mode: str = "off", genre: str = "") -> str:
     """genre_traitsとplot_modeを反映した動的システムプロンプトを生成する。
