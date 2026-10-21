@@ -173,7 +173,8 @@ def _do_adaptive_replot(h: list) -> None:
 
     if not new_plot:
         system_print("（プロット再生成に失敗しました。そのまま続行します。）")
-        state.update({"adaptive_replotted": True, "deviation_count": 0})
+        peak = s.get("deviation_count", 0)
+        state.update({"adaptive_replotted": True, "deviation_count": 0, "peak_deviation_count": peak})
         return
 
     if DEBUG_MODE:
@@ -183,11 +184,13 @@ def _do_adaptive_replot(h: list) -> None:
     new_genre = new_plot.get("new_genre", genre)
 
     # 新プロットをstateに保存
+    peak = s.get("deviation_count", 0)
     state.update({
         "adaptive_replotted": True,
         "adaptive_new_plot": new_plot,
         "adaptive_new_genre": new_genre,
         "deviation_count": 0,
+        "peak_deviation_count": peak,
         # beat制御: 新プロットからシンプルなビートキューを構築
         "beat_queue": _build_adaptive_beat_queue(new_plot),
         "beat_ptr": 0,
@@ -403,7 +406,8 @@ def _build_api_messages(h: list) -> list:
                     print(f"[ADAPTIVE] deviation_count={deviation_count}", file=sys.stderr)
 
                 if deviation_count >= 5:
-                    # プロット再生成 → beat着地モードへ
+                    # プロット再生成 → beat着地モードへ（到達カウントを記録）
+                    state.update({"peak_deviation_count": deviation_count})
                     _do_adaptive_replot(h)
                     # 再生成直後はビートキューの先頭を注入
                     s2 = state.get()
