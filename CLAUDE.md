@@ -485,3 +485,11 @@ SF「星霜の残響」（adaptive/normal）で逸脱ゼロ・固執ゼロのま
 - `main.py` の `_build_api_messages()` に追加：ターン数が25を超えたら毎ターン「現在の状況から自然にエンディングへ収束させること」のinjectionを挿入
 - `_is_strong()` がFalseのとき（off/adaptive/improvのみ）に発動
 - strongへの影響ゼロ
+
+### 2026年10月（commit 74100e9）：adaptive中間ビートを誘導形injectionに変更
+
+adaptive再生成後のビートが「命令形」だったため、GMがプレイヤーの行動（帰宅・就寝等）を無視して場面を強制する問題が発生。
+
+- `_build_adaptive_beat_queue()` の中間ビートinjectionを「GMへの場面指示: 〜すること」→「GMへの誘導: 〜という展開に自然につながるよう場面を進めること。ただしプレイヤーの行動は必ず受理すること。」に変更
+- ending beat（着地点への誘導）は命令形を維持（着地保証のため）
+- strongへの影響ゼロ
