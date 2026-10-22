@@ -704,7 +704,8 @@ def save_session_json(h: list, title: str) -> None:
     import re as _re
     safe_title = _re.sub(r'[\\/:*?"<>|\s]', "_", title)
     safe_title = safe_title.strip("_") or "session"
-    filename = f"{safe_title}_{timestamp}.json"
+    play_mode = state.get().get("auto_play_mode", "manual")
+    filename = f"{safe_title}_{play_mode}_{timestamp}.json"
     data = {
         "state": state.get(),
         "history": h,
