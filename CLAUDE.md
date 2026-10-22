@@ -35,6 +35,33 @@ LM Studio用インタラクティブフィクションシステム。
 
 ---
 
+## ログ要約の運用（セッション跨ぎ必読）
+
+ユーザーがログJSONをチャットに添付したら、以下を実行すること：
+
+1. ログを読んで `logs/summaries/<タイトル>_<mode>_<play_mode>_<日付>.md` に要約を作成
+2. `logs/trends.md` の集計・傾向を更新
+3. `git push origin init-branch:main --force` と `git push origin init-branch` の両方でpush
+
+**要約ファイルの形式：**
+```
+# <タイトル>（<genre> / <plot_mode> / <play_mode>）
+
+- 日時: YYYYMMDD
+- ターン数: N
+- end_reason: ending / fixation / turn_limit
+- deviation_count（peak）: N（adaptive時のみ）
+- fixation_count: N
+
+## 問題・特記事項
+（問題があれば何ターン目に何が起きたか。なければ「なし」）
+
+## 物語の流れ（3行以内）
+（逸脱・収束・着地の概要）
+```
+
+---
+
 ## 作業ルール（セッション跨ぎ必読）
 
 - **実装前に必ずユーザーに確認を取ること。** 内容を提示して承認を得てから実装する。
