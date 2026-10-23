@@ -91,7 +91,7 @@ On startup, you will be prompted for:
 | # | Mode | Description |
 |---|------|-------------|
 | 1 | Plot reference · guided | GM steers toward the plot, but deviation is fully accepted. Good for players who want some narrative direction while staying free to deviate. **Experimental — may end at the 40-turn limit if the story does not converge** |
-| 2 | Plot reference · loose | Follows the plot but allows free play and deviation. Balances narrative flow with player freedom. **Recommended for first-time play** |
+| 2 | Plot reference · adaptive | On heavy deviation, regenerates the plot from the current scene and guides the story to a conclusion via beat injection. Replots at most once; after that, ending is guaranteed as in strict mode. **Recommended for first-time play** |
 | 3 | Plot reference · strict | Beats, twists, and failures are force-injected on schedule. Player freedom is maintained, but major plot elements are always resolved |
 | 4 | No plot · improv | No plot is generated; the GM improvises freely. Every run produces a completely different story. **Experimental — may end at the 40-turn limit if the story does not converge** |
 
