@@ -437,9 +437,9 @@ def _build_api_messages(h: list) -> list:
                         print(f"[ADAPTIVE] warning injection at count={deviation_count}", file=sys.stderr)
                     return msgs
             else:
-                # 逸脱解消されたらカウントをリセット
-                if s.get("deviation_count", 0) > 0:
-                    state.update({"deviation_count": 0})
+                # 逸脱なし: カウントはリセットせず累積する
+                if DEBUG_MODE and s.get("deviation_count", 0) > 0:
+                    print(f"[ADAPTIVE] deviation: no (count stays at {s.get('deviation_count', 0)})", file=sys.stderr)
 
     # off/adaptive(再生成前)/improvモード: ターン数過多→収束injection（25ターン超）
     if not _is_strong():
