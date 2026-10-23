@@ -6,8 +6,8 @@
 
 | 項目 | 値 |
 |------|-----|
-| 総セッション数 | 4 |
-| end_reason="ending" | 4 |
+| 総セッション数 | 5 |
+| end_reason="ending" | 5 |
 | end_reason="fixation" | 0 |
 | end_reason="turn_limit" | 0 |
 
@@ -20,6 +20,12 @@
 - 再生成後も「ルナを無視する」が4回続いたが、GMがNPC側を能動的に動かして物語を収束させた（モンスター）
 - 恋愛路線への逸脱でdeviation=5→再生成発火→「学園ラブコメ/青春純愛」に変容（最大のジャンル変容ケース）✅（モンスター2本目）
 - 元ジャンル「児童向け小説」がラブコメに変容。プロット設定（モンスター設定・学校生活）は再利用された（モンスター2本目）
+
+### adaptive / deviate
+- えほんジャンル（そらとぶくるま）で check_deviation が終始 no → deviation_count=0 のまま ending（replot未発火）
+- えほんはプロット自体が緩く、逸脱判定のキーワード乖離が出にくい可能性
+- deviateプレイヤーの「石ループ」を fixation_count=1 で検出し軽量injection → GMが自力収束 ✅
+- beat.py KeyError 修正の動作確認未達（replot未発火のため）
 
 ## 既知の問題パターン
 
