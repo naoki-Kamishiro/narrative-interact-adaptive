@@ -137,6 +137,10 @@ def _is_adaptive() -> bool:
     return state.get_plot_mode() == "adaptive"
 
 
+def _is_off() -> bool:
+    return state.get_plot_mode() == "off"
+
+
 def _get_plot_keywords(plot: dict) -> list[str]:
     """プロットから逸脱判定用のキーワードリストを生成する。"""
     keywords = []
@@ -488,12 +492,42 @@ def _build_api_messages(h: list) -> list:
         else:
             # ループ解消されたらカウントリセット
             state.update({"fixation_count": 0})
+
+    # offモード: 誘導形beat injection
+    if _is_off():
+        s = state.get()
+        queue = s.get("beat_queue", [])
+        ptr = s.get("beat_ptr", 0)
+        if queue:
+            msgs, debug = hist.build_for_api_with_beat(h, queue, ptr)
+            if debug and DEBUG_MODE:
+                print(debug, file=sys.stderr)
+            # beat枯渇後: 軽めに1回だけ着地を促す
+            queue_exhausted = queue and beat_mod.get_current_beat(queue, ptr) is None
+            if queue_exhausted and not s.get("ending_prompted", False):
+                plot = s.get("plot", {})
+                ending = plot.get("ending", "")
+                if ending:
+                    injection = f"物語の着地点「{ending}」に向けて、自然に収束させること。完結した場合は最後の1行に「【エンディング】」とのみ出力すること。"
+                else:
+                    injection = "物語を自然に収束させること。完結した場合は最後の1行に「【エンディング】」とのみ出力すること。"
+                msgs = [dict(m) for m in msgs]
+                for i in reversed(range(len(msgs))):
+                    if msgs[i]["role"] == "user":
+                        msgs[i] = dict(msgs[i])
+                        msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
+                        break
+                state.update({"ending_prompted": True})
+                if DEBUG_MODE:
+                    print("[OFF] beat queue exhausted: injecting soft ending prompt", file=sys.stderr)
+            return msgs
+
     return hist.build_for_api(h)
 
 
 def _after_reply(reply: str) -> None:
-    """strongモード / adaptive再生成後: GM応答後にビートポインタを進める。"""
-    is_beat_mode = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False))
+    """strongモード / adaptive再生成後 / off: GM応答後にビートポインタを進める。"""
+    is_beat_mode = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False)) or _is_off()
     if not is_beat_mode:
         return
     s = state.get()
@@ -554,7 +588,7 @@ def check_ending(reply: str) -> bool:
     return ENDING_MARKER in reply
 
 PLOT_MODE_LABELS = {
-    "1": ("off", "プロット参照・自由"),
+    "1": ("off", "プロット参照・誘導（プロットに沿うよう誘導するが逸脱自由）"),
     "2": ("adaptive", "プロット参照・適応（逸脱を検出して現在地で物語を再構成）"),
     "3": ("strong", "プロット参照・強拘束"),
     "4": ("improv", "プロットなし・即興"),
@@ -564,7 +598,7 @@ def ask_plot_mode() -> str:
     exp_note = "（実験的）（40ターンで強制終了する場合あり）"
     print()
     print("物語の軸:")
-    print(f"  1. プロット参照・自由{exp_note}")
+    print(f"  1. プロット参照・誘導（プロットに沿うよう誘導するが逸脱自由）{exp_note}")
     print(f"  2. プロット参照・適応（逸脱を検出して現在地で物語を再構成）{exp_note}")
     print("  3. プロット参照・強拘束（プロット強制回収）★初めてならこれを推奨")
     print(f"  4. プロットなし・即興{exp_note}")
@@ -626,7 +660,7 @@ def start_new_game() -> tuple[list, str, str]:
     state.update({"use_dice": use_dice, "difficulty_preset": difficulty_preset,
                   "auto_play_mode": AUTO_PLAY_MODE or "manual"})
 
-    if plot_mode == "strong" and plot:
+    if plot_mode in ("strong", "off") and plot:
         queue = beat_mod.build_queue(plot)
         state.update({"beat_queue": queue, "beat_ptr": 0, "ending_suppressed": False, "ending_prompted": False})
         if DEBUG_MODE:
@@ -685,7 +719,7 @@ def resume_game() -> tuple[list, str, str] | None:
     dice_mod.set_difficulty_preset(s.get("difficulty_preset", "normal"))
 
     # 旧セーブにbeat_queueがない場合は再構築
-    if plot_mode == "strong" and plot and not s.get("beat_queue"):
+    if plot_mode in ("strong", "off") and plot and not s.get("beat_queue"):
         queue = beat_mod.build_queue(plot)
         state.update({"beat_queue": queue, "beat_ptr": 0, "ending_suppressed": False, "ending_prompted": False})
         if DEBUG_MODE:
@@ -797,7 +831,7 @@ def run_single_session(plot_mode: str) -> None:
     state.update({"use_dice": BATCH_USE_DICE, "difficulty_preset": difficulty_preset,
                   "auto_play_mode": AUTO_PLAY_MODE or "manual"})
 
-    if plot_mode == "strong" and plot:
+    if plot_mode in ("strong", "off") and plot:
         queue = beat_mod.build_queue(plot)
         state.update({"beat_queue": queue, "beat_ptr": 0, "ending_suppressed": False, "ending_prompted": False})
         if DEBUG_MODE:
@@ -883,7 +917,7 @@ def run_single_session(plot_mode: str) -> None:
         _after_reply(reply)
 
         if check_ending(reply):
-            _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False))
+            _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False)) or _is_off()
             if _use_beat_suppression and not state.get().get("ending_suppressed", False):
                 s = state.get()
                 queue = s.get("beat_queue", [])
@@ -1097,7 +1131,7 @@ def main():
             h = hist.add_assistant(h, reply)
             _after_reply(reply)
             if check_ending(reply):
-                _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False))
+                _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False)) or _is_off()
                 if _use_beat_suppression and not state.get().get("ending_suppressed", False):
                     s = state.get()
                     queue = s.get("beat_queue", [])
@@ -1163,8 +1197,8 @@ def main():
         _after_reply(reply)
 
         if check_ending(reply):
-            # strong / adaptive再生成後のエンディング早出し抑止
-            _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False))
+            # strong / adaptive再生成後 / offのエンディング早出し抑止
+            _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False)) or _is_off()
             if _use_beat_suppression and not state.get().get("ending_suppressed", False):
                 s = state.get()
                 queue = s.get("beat_queue", [])

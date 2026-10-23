@@ -533,3 +533,21 @@ adaptive再生成後のビートが「命令形」だったため、GMがプレ�
 - `_build_adaptive_beat_queue()` の中間ビートinjectionを「GMへの場面指示: 〜すること」→「GMへの誘導: 〜という展開に自然につながるよう場面を進めること。ただしプレイヤーの行動は必ず受理すること。」に変更
 - ending beat（着地点への誘導）は命令形を維持（着地保証のため）
 - strongへの影響ゼロ
+
+### 2026年10月（今セッション）：offモードを「プロット参照・誘導」に改名・誘導形beat injection追加
+
+offモードを「自由」から「誘導」に方針変更。プロット要素をbeatとして注入してGMに誘導させるが、逸脱は完全に許容する。
+
+**変更内容**
+- `main.py` `_is_off()` 関数を追加
+- `main.py` `_build_api_messages()` にoff用誘導形beat injection処理を追加：
+  - beatキューが存在する場合は `hist.build_for_api_with_beat()` でbeat injectionを行う
+  - beatキューが尽きた場合は着地点テキストを使ったsoft ending promptをinjection
+- `main.py` `_after_reply()` にoff追加（beat_ptr進行の条件）
+- `main.py` `_use_beat_suppression` の3箇所全てに `or _is_off()` を追加（beat未完了時のエンディング早出し抑止）
+- `main.py` session開始・load・バッチ処理の3箇所でoffも `beat_mod.build_queue(plot)` を実行するよう変更
+- `main.py` PLOT_MODE_LABELS の選択肢1を「プロット参照・誘導（プロットに沿うよう誘導するが逸脱自由）」に変更
+- `main.py` `ask_plot_mode()` の表示テキストも同様に更新
+- `prompt.py` PLOT_MODE_RULES["off"] の先頭に「プロットの流れをGMは意識し、合致する場合は積極的に取り入れること」を追加
+- `README.md` / `README_EN.md` の選択肢1説明を更新（「自由」→「誘導」）
+- strongへの影響ゼロ
