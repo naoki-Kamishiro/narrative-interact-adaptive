@@ -6,8 +6,8 @@
 
 | 項目 | 値 |
 |------|-----|
-| 総セッション数 | 17 |
-| end_reason="ending" | 10 |
+| 総セッション数 | 18 |
+| end_reason="ending" | 11 |
 | end_reason="fixation" | 7 |
 | end_reason="turn_limit" | 0 |
 
@@ -63,6 +63,17 @@
 **fixation_endingバグ（commit d7a1f09で修正済み）**
 - replot前に固執が検出されてfixation_count>=1の状態でreplotが発動した場合、fixation_ending=Trueが残りend_reason="fixation"と誤記録されるバグ
 - 裏切りの残響（全beat完走）で発見。_do_adaptive_replot()内でfixation_count=0・fixation_ending=Falseをリセットして修正
+
+**adaptive/deviate 第3回（20261023）：1本**
+- 放課後の図書室、微かなノイズ（日常・31T）：deviation=2・fixation=0→GMが自力収束 ✅ 自然ending
+  - deviateプレイヤーが栞の落とす/置く・NPC無視・書棚に隠れる等を繰り返したが、fixation未発火
+  - GMがカイト（NPC）を能動的に動かして追いかける・詩集を見せる等の誘導を継続し自力着地
+  - 類似タイトル「放課後の図書室、微かな埃のダンス」（17T・fixation）との対比：プレイヤー行動が多様だったためfixation未発火
+  - fixation injection改善（「着地点の文は使わず」削除→「プロットの着地点に向けて収束」）後の自然ending確認ケース
+
+**傾向：fixation injection改善の効果**
+- 「着地点の文は使わず」→「プロットの着地点に向けて収束」に変更後、fixation時のエンディング品質が向上する見込み
+- 今回は自然endingで対照例未取得。次回fixation発火時のエンディング品質で効果確認予定
 
 - **deviation_countリセットバグ**（commit 1dec3d2で修正済み）
   - check_deviation が no のとき count を 0 にリセットしていたため、replot（count=5）が事実上機能しなかった
