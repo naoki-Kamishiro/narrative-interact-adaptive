@@ -6,9 +6,9 @@
 
 | 項目 | 値 |
 |------|-----|
-| 総セッション数 | 12 |
-| end_reason="ending" | 9 |
-| end_reason="fixation" | 3 |
+| 総セッション数 | 17 |
+| end_reason="ending" | 10 |
+| end_reason="fixation" | 7 |
 | end_reason="turn_limit" | 0 |
 
 ## モード別傾向
@@ -47,6 +47,22 @@
 - deviation=0のままfixation収束は「逸脱ではなく固執」の正確な分類と言える
 
 ## 既知の問題パターン
+
+**adaptive/deviate バッチ5本（20261023・第2回）：全5本が turn_limit なし**
+- 嘘の残響（ミステリー・33T）：deviation=1・fixation=0→GMが自力収束 ✅ 唯一の自然ending
+- 放課後の残響（青春・12T）：deviation=0・fixation=2→強制ending。NPCを無視して窓を見続ける固執
+- 放課後の図書室（日常・17T）：deviation=0・fixation=2→強制ending。本棚間の移動・物の操作ループ
+- 裏切りの残響（犯罪・22T）：peak_deviation=5・replot=true→beat完走ending ✅（fixation_endingバグを発見・修正）
+- 底の無い祈り（ホラー・7T）：deviation=0・fixation=2→強制ending（最短）。壁際の言い換え行動ループ
+
+**傾向：deviateモードの「動かない固執」問題**
+- deviateプレイヤーが「移動しない・NPCを無視する・微細な言い換え行動を繰り返す」パターンでfixationが先発火するケースが複数
+- ミステリー（嘘の残響）だけ自然endingだったのは、プレイヤーが物を調べながら動き回ったためfixation検出が難しかったから
+- ホラー（底の無い祈り）の7Tは「壁際から動かない」という最も単純なループで最速発火
+
+**fixation_endingバグ（commit d7a1f09で修正済み）**
+- replot前に固執が検出されてfixation_count>=1の状態でreplotが発動した場合、fixation_ending=Trueが残りend_reason="fixation"と誤記録されるバグ
+- 裏切りの残響（全beat完走）で発見。_do_adaptive_replot()内でfixation_count=0・fixation_ending=Falseをリセットして修正
 
 - **deviation_countリセットバグ**（commit 1dec3d2で修正済み）
   - check_deviation が no のとき count を 0 にリセットしていたため、replot（count=5）が事実上機能しなかった
