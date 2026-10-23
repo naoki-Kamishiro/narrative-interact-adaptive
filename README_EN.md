@@ -49,6 +49,8 @@ The story ends when the plot reaches its conclusion. The GM decides when that is
 
 ## Setup
 
+There are no binary releases. Download the source code and run it directly.
+
 ```bash
 git clone https://github.com/naoki-Kamishiro/narrative-interact.git
 cd narrative-interact

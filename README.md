@@ -99,6 +99,8 @@ GMの描写を読んで、主人公として行動を入力する。
 
 ## セットアップ
 
+バイナリ配布はありません。ソースコードをそのままダウンロードして実行してください。
+
 ```bash
 git clone https://github.com/naoki-Kamishiro/narrative-interact.git
 cd narrative-interact
