@@ -6,8 +6,8 @@
 
 | 項目 | 値 |
 |------|-----|
-| 総セッション数 | 3 |
-| end_reason="ending" | 3 |
+| 総セッション数 | 4 |
+| end_reason="ending" | 4 |
 | end_reason="fixation" | 0 |
 | end_reason="turn_limit" | 0 |
 
@@ -23,4 +23,7 @@
 
 ## 既知の問題パターン
 
-（ログが蓄積されたら記録する）
+- **deviation_countリセットバグ**（commit 1dec3d2で修正済み）
+  - check_deviation が no のとき count を 0 にリセットしていたため、replot（count=5）が事実上機能しなかった
+  - 修正後は累積カウントに変更。replot発動の信頼性が向上する見込み
+  - 発覚したのはサーカス団ログの `[ADAPTIVE] deviation_count=1` がリセット後にしか見えないことから
