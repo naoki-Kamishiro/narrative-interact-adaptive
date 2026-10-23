@@ -165,14 +165,16 @@ def _do_adaptive_replot(h: list) -> None:
     s = state.get()
     genre = s.get("genre", "")
 
-    system_print("（逸脱を検出しました。現在の展開から新しい物語の着地点を生成します...）")
+    if DEBUG_MODE:
+        print("[ADAPTIVE] 逸脱を検出。プロット再生成を開始します。", file=sys.stderr)
 
     # 直近10ターン分の会話履歴を渡す（systemは除く）
     recent = [m for m in h if m["role"] in ("user", "assistant")][-20:]
     new_plot = regenerate_plot(recent, genre)
 
     if not new_plot:
-        system_print("（プロット再生成に失敗しました。そのまま続行します。）")
+        if DEBUG_MODE:
+            print("[ADAPTIVE] プロット再生成に失敗しました。そのまま続行します。", file=sys.stderr)
         peak = s.get("deviation_count", 0)
         state.update({"adaptive_replotted": True, "deviation_count": 0, "peak_deviation_count": peak})
         return
@@ -205,7 +207,8 @@ def _do_adaptive_replot(h: list) -> None:
             h[i] = {"role": "system", "content": new_sys_prompt}
             break
 
-    system_print(f"（新しい着地点を設定しました: {new_plot.get('ending_scene', '')[:40]}...）")
+    if DEBUG_MODE:
+        print(f"[ADAPTIVE] 新しい着地点を設定しました: {new_plot.get('ending_scene', '')[:40]}...", file=sys.stderr)
 
 
 def _build_adaptive_beat_queue(new_plot: dict) -> list:
