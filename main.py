@@ -480,8 +480,8 @@ def _build_api_messages(h: list) -> list:
                 state.update({"fixation_ending": True})
             else:
                 injection = (
-                    "プレイヤーの行動が同じ対象に集中している。"
-                    "物語を収束に向けて進めてください。"
+                    "プレイヤーが同じ場所・行動を繰り返している。"
+                    "新しい出来事・人物・状況の変化を起こして場面を前進させること。エンディングにはしない。"
                 )
             for i in reversed(range(len(msgs))):
                 if msgs[i]["role"] == "user":
