@@ -6,8 +6,8 @@
 
 | 項目 | 値 |
 |------|-----|
-| 総セッション数 | 11 |
-| end_reason="ending" | 8 |
+| 総セッション数 | 12 |
+| end_reason="ending" | 9 |
 | end_reason="fixation" | 3 |
 | end_reason="turn_limit" | 0 |
 
@@ -24,6 +24,9 @@
 - 同一行動反復ルール追加後初検証：「太陽に向かって飛ぶ」×8回でGMが毎回状況を進展させた（言い換えでなく展開変化）✅（ちょうちょ）
 - replot発火（deviation=5）→beat制御で着地。収束の主因はreplotのため、ルール単独効果は未分離（ちょうちょ）
 - 主人公不在ルールの発動確認は未達（消滅→即endingになったため不在漂流が発生せず）（ちょうちょ）
+
+- 全刺激無視・漂流のみでdeviation=5→replot発火→ジャンル「幻想的な寓話」に変容→beat着地 ✅（トリトン）
+- replot後のbeat（瞑想・海との同化・導き手への帰還）が自然な流れに着地。manualプレイでのreplot成功例（トリトン）
 
 ### adaptive / deviate
 - えほんジャンル（そらとぶくるま）で check_deviation が終始 no → deviation_count=0 のまま ending（replot未発火）
