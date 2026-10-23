@@ -124,39 +124,6 @@ def generate_genre_title(genre: str = "") -> dict:
         return {"error": str(e)}
 
 
-def check_fixation(actions: list[str]) -> bool:
-    """直近3件のプレイヤー行動が物語を前進させずに同じ状況に留まり続けているか判定する。
-    LLMにyes/noで答えさせる。エラー時はFalseを返す（安全側に倒す）。
-    """
-    if len(actions) < 3:
-        return False
-    actions_text = "\n".join(f"{i+1}. {a}" for i, a in enumerate(actions))
-    prompt = (
-        f"以下はテキストRPGのプレイヤーの直近3つの行動です。\n\n"
-        f"{actions_text}\n\n"
-        f"判定してください：これらの行動は物語を前進させる変化を生んでいますか？それとも同じ状況・場所・対象に留まり続けていますか？\n"
-        f"※異なる対象への操作、道具の一連の使用（取る→使う→置く等）、場所の移動は「前進」です。\n"
-        f"※NPCとの対話・反応・視線のやり取り・頷き等の対人コミュニケーションの継続は「前進」です。\n"
-        f"※同じ対象を繰り返し凝視・触る・試みるだけで新しい状況が生まれていない場合は「停滞」です。\n"
-        f"停滞している場合は「yes」、前進している場合は「no」を1単語のみで答えてください。"
-    )
-    messages = [
-        {"role": "system", "content": "あなたはテキストRPGの進行を補助するシステムです。"},
-        {"role": "user", "content": prompt},
-    ]
-    try:
-        client = get_client()
-        response = client.chat.completions.create(
-            model="local",
-            messages=messages,
-            max_tokens=4,
-            temperature=0.0,
-        )
-        answer = response.choices[0].message.content.strip().lower()
-        return answer.startswith("yes")
-    except Exception:
-        return False
-
 
 def check_deviation(actions: list[str], plot_keywords: list[str]) -> bool:
     """直近3件のプレイヤー行動が元プロットから大きく逸脱しているか判定する。

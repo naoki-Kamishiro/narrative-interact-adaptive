@@ -10,7 +10,7 @@ import state
 import history as hist
 import plot as plot_mod
 import save as save_mod
-from api import chat, chat_player, generate_genre_title, check_fixation, check_deviation, regenerate_plot
+from api import chat, chat_player, generate_genre_title, check_deviation, regenerate_plot
 import random
 from display import gm_print, system_print, error_print, hr
 from prompt import build_start_message, build_adaptive_replot_system_prompt
@@ -201,9 +201,6 @@ def _do_adaptive_replot(h: list) -> None:
         "beat_queue": _build_adaptive_beat_queue(new_plot),
         "beat_ptr": 0,
         "ending_suppressed": False,
-        # replot後は固執カウントをリセット（replot前の固執でfixation_endingが立つのを防ぐ）
-        "fixation_count": 0,
-        "fixation_ending": False,
         "ending_prompted": False,
     })
 
@@ -462,38 +459,6 @@ def _build_api_messages(h: list) -> list:
             if DEBUG_MODE:
                 print(f"[TURN_LIMIT] turn={turn_count}: injecting convergence prompt", file=sys.stderr)
             return msgs
-
-    # off/adaptive(再生成前)/improvモード・自動プレイ時のみ: 固執ループ検出→エンディング強制injection
-    if not _is_strong() and AUTO_PLAY_MODE:
-        recent = _get_recent_player_actions(h, n=3)
-        if len(recent) >= 3 and check_fixation(recent):
-            s = state.get()
-            fixation_count = s.get("fixation_count", 0) + 1
-            state.update({"fixation_count": fixation_count})
-            msgs = list(hist.build_for_api(h))
-            if fixation_count >= 2:
-                injection = (
-                    "プレイヤーが同一対象への行動を繰り返しループしている。"
-                    "直前のターンで起きた出来事・登場した人物・変化した状況を引き継いで、このターンでエンディングに導くこと。"
-                    "最後の1行に「【エンディング】」とのみ出力すること。"
-                )
-                state.update({"fixation_ending": True})
-            else:
-                injection = (
-                    "プレイヤーが同じ場所・行動を繰り返している。"
-                    "新しい出来事・人物・状況の変化を起こして場面を前進させること。エンディングにはしない。"
-                )
-            for i in reversed(range(len(msgs))):
-                if msgs[i]["role"] == "user":
-                    msgs[i] = dict(msgs[i])
-                    msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
-                    break
-            if DEBUG_MODE:
-                print(f"[FIXATION] count={fixation_count}: injecting {'ending' if fixation_count >= 2 else 'soft'} prompt", file=sys.stderr)
-            return msgs
-        else:
-            # ループ解消されたらカウントリセット
-            state.update({"fixation_count": 0})
 
     # offモード: 誘導形beat injection
     if _is_off():
@@ -757,7 +722,7 @@ def handle_ending(h: list) -> tuple[list, bool]:
     """エンディング後の選択を処理する。戻り値は (履歴, 終了するか)。"""
     system_print("エンディングを迎えました。お疲れさまでした。")
     if AUTO_PLAY_MODE:
-        end_reason = "fixation" if state.get().get("fixation_ending") else "ending"
+        end_reason = "ending"
         state.update({"end_reason": end_reason})
         # 自動プレイ時はエピローグを自動生成して終了
         h = hist.add_user(h, EPILOGUE_PROMPT)
