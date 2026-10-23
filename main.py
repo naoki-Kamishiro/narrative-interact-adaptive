@@ -201,6 +201,9 @@ def _do_adaptive_replot(h: list) -> None:
         "beat_queue": _build_adaptive_beat_queue(new_plot),
         "beat_ptr": 0,
         "ending_suppressed": False,
+        # replot後は固執カウントをリセット（replot前の固執でfixation_endingが立つのを防ぐ）
+        "fixation_count": 0,
+        "fixation_ending": False,
         "ending_prompted": False,
     })
 
