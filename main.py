@@ -10,9 +10,9 @@ import state
 import history as hist
 import plot as plot_mod
 import save as save_mod
-from api import chat, chat_player, generate_genre_title, check_deviation, regenerate_plot
+from api import chat, chat_player, generate_genre_title, check_deviation, regenerate_plot, extract_protagonist_name, check_turning_point, generate_gm_char_comment, GM_CHAR_LABELS
 import random
-from display import gm_print, system_print, error_print, hr
+from display import gm_print, gm_turning_point_print, system_print, error_print, hr, gm_char_print
 from prompt import build_start_message, build_adaptive_replot_system_prompt
 import dice as dice_mod
 import beat as beat_mod
@@ -61,6 +61,7 @@ _batch_genre_queue: list[str] = []  # シャッフル済みキュー
 # バッチ用ダイス設定（開始前に1回だけ手入力）
 BATCH_USE_DICE: bool = True
 BATCH_DIFFICULTY: str = "normal"
+BATCH_GM_CHARACTER: str = "none"
 
 PLAYER_SYSTEM_NORMAL = (
     "あなたはナラティブインタラクトシステムのプレイヤーです。\n"
@@ -84,13 +85,12 @@ PLAYER_SYSTEM_NORMAL = (
 PLAYER_SYSTEM_DEVIATE = (
     "あなたはナラティブインタラクトシステムのプレイヤーです。\n"
     "GMから提示された文章をもとに行動を改行なしで出力します。\n"
-    "主人公として、GMの意図した行動を敢えて避ける行動をしてください。\n"
+    "主人公として、GMが提示した展開・誘導・フックを敢えて無視するか、逆の行動をしてください。\n"
     "「」を使わず生テキストのみセリフではなく行動を出力してください。\n"
     "行動に心情は出力しない事。\n"
     "行動に余計な装飾はしない事。\n"
     "端的に行動を描写する事。\n"
     "行動をいくつも一度にしない事。\n"
-    "同じ対象への行動が動詞を変えながら3回続いた場合も、別の対象・別の場所への行動に切り替えること。\n"
     "エンディングと表示されたら終了してください。"
 )
 
@@ -112,10 +112,15 @@ def ask(prompt: str) -> str:
 
 def call_gm(messages: list, max_retries: int = 1) -> str:
     reply = chat(messages)
+    # コンテキスト上限はリトライせず即返す
+    if reply == "[CONTEXT_LIMIT]":
+        return "[CONTEXT_LIMIT]"
     attempt = 0
     while (reply.startswith("[ERROR") or not reply.strip()) and attempt < max_retries:
         system_print("応答生成に失敗したため再試行します...")
         reply = chat(messages)
+        if reply == "[CONTEXT_LIMIT]":
+            return "[CONTEXT_LIMIT]"
         attempt += 1
     # 空応答はエラー扱いにする
     if not reply.strip():
@@ -125,7 +130,11 @@ def call_gm(messages: list, max_retries: int = 1) -> str:
         if ENDING_MARKER in reply:
             reply = reply.replace(ENDING_MARKER, "").strip()
             reply = reply + "\n" + ENDING_MARKER
-        gm_print(reply)
+        s = state.get()
+        if s.get("turning_point_injected", False):
+            gm_turning_point_print(reply)
+        else:
+            gm_print(reply)
     return reply
 
 
@@ -135,10 +144,6 @@ def _is_strong() -> bool:
 
 def _is_adaptive() -> bool:
     return state.get_plot_mode() == "adaptive"
-
-
-def _is_off() -> bool:
-    return state.get_plot_mode() == "off"
 
 
 def _get_plot_keywords(plot: dict) -> list[str]:
@@ -232,8 +237,8 @@ def _build_adaptive_beat_queue(new_plot: dict) -> list:
             "timing": timing,
             "done": False,
             "injection": (
-                f"（GMへの場面指示: 「{desc}」という展開に進めること。"
-                f"プレイヤーが逸脱しても、この展開へ強制的に誘導してよい。）"
+                f"（GMへの誘導: 「{desc}」という展開に自然につながるよう場面を進めること。"
+                f"ただしプレイヤーの行動は必ず受理すること。）"
             ),
         })
     # 着地点をファイナルビートとして追加
@@ -266,6 +271,23 @@ def _get_recent_player_actions(history: list, n: int = 5) -> list[str]:
             continue
         actions.append(first_line)
     return actions[-n:] if actions else []
+
+
+def _apply_turning_point_injection(msgs: list) -> list:
+    """転換点フラグが立っている場合、描写強化injectionをメッセージ末尾のuserに追加してフラグを更新する。"""
+    s = state.get()
+    if s.get("turning_point_triggered", False) and not s.get("turning_point_injected", False):
+        injection = "このターンは物語の転機です。通常より詳細に、丁寧に描写すること。500字以内とすること。"
+        msgs = list(msgs)
+        for i in reversed(range(len(msgs))):
+            if msgs[i]["role"] == "user":
+                msgs[i] = dict(msgs[i])
+                msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
+                break
+        state.update({"turning_point_injected": True, "turning_point_triggered": False})
+        if DEBUG_MODE:
+            print("[TURNING] turning point injection applied", file=sys.stderr)
+    return msgs
 
 
 def _build_api_messages(h: list) -> list:
@@ -338,7 +360,7 @@ def _build_api_messages(h: list) -> list:
                     break
             if DEBUG_MODE:
                 print(f"[BEAT] post-ending injection (turn {post_count})", file=sys.stderr)
-        return msgs
+        return _apply_turning_point_injection(msgs)
     # adaptiveモード: 逸脱検出 → 警告injection → プロット再生成 → beat着地
     if _is_adaptive():
         s = state.get()
@@ -399,7 +421,7 @@ def _build_api_messages(h: list) -> list:
                         break
                 if DEBUG_MODE:
                     print(f"[ADAPTIVE] post-ending injection (turn {post_count})", file=sys.stderr)
-            return msgs
+            return _apply_turning_point_injection(msgs)
 
         # 再生成前: 毎ターン逸脱判定（AUTO_PLAY_MODEに関わらず判定する）
         recent = _get_recent_player_actions(h, n=3)
@@ -423,7 +445,7 @@ def _build_api_messages(h: list) -> list:
                     msgs, debug = hist.build_for_api_with_beat(h, queue, ptr)
                     if debug and DEBUG_MODE:
                         print(debug, file=sys.stderr)
-                    return msgs
+                    return _apply_turning_point_injection(msgs)
                 elif deviation_count >= 3:
                     # 警告injection: GMに収束を促す
                     msgs = list(hist.build_for_api(h))
@@ -439,7 +461,7 @@ def _build_api_messages(h: list) -> list:
                             break
                     if DEBUG_MODE:
                         print(f"[ADAPTIVE] warning injection at count={deviation_count}", file=sys.stderr)
-                    return msgs
+                    return _apply_turning_point_injection(msgs)
             else:
                 # 逸脱なし: カウントはリセットせず累積する
                 if DEBUG_MODE and s.get("deviation_count", 0) > 0:
@@ -458,50 +480,27 @@ def _build_api_messages(h: list) -> list:
                     break
             if DEBUG_MODE:
                 print(f"[TURN_LIMIT] turn={turn_count}: injecting convergence prompt", file=sys.stderr)
-            return msgs
+            return _apply_turning_point_injection(msgs)
 
-    # offモード: 誘導形beat injection
-    if _is_off():
-        s = state.get()
-        queue = s.get("beat_queue", [])
-        ptr = s.get("beat_ptr", 0)
-        if queue:
-            msgs, debug = hist.build_for_api_with_beat(h, queue, ptr)
-            if debug and DEBUG_MODE:
-                print(debug, file=sys.stderr)
-            # beat枯渇後: 軽めに1回だけ着地を促す
-            queue_exhausted = queue and beat_mod.get_current_beat(queue, ptr) is None
-            if queue_exhausted and not s.get("ending_prompted", False):
-                plot = s.get("plot", {})
-                ending = plot.get("ending", "")
-                if ending:
-                    injection = f"物語の着地点「{ending}」に向けて、自然に収束させること。完結した場合は最後の1行に「【エンディング】」とのみ出力すること。"
-                else:
-                    injection = "物語を自然に収束させること。完結した場合は最後の1行に「【エンディング】」とのみ出力すること。"
-                msgs = [dict(m) for m in msgs]
-                for i in reversed(range(len(msgs))):
-                    if msgs[i]["role"] == "user":
-                        msgs[i] = dict(msgs[i])
-                        msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
-                        break
-                state.update({"ending_prompted": True})
-                if DEBUG_MODE:
-                    print("[OFF] beat queue exhausted: injecting soft ending prompt", file=sys.stderr)
-            return msgs
-
-    return hist.build_for_api(h)
+    msgs = list(hist.build_for_api(h))
+    return _apply_turning_point_injection(msgs)
 
 
 def _after_reply(reply: str) -> None:
-    """strongモード / adaptive再生成後 / off: GM応答後にビートポインタを進める。"""
+    """strongモード / adaptive再生成後 / offモード: GM応答後にビートポインタを進める。"""
     is_beat_mode = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False)) or _is_off()
-    if not is_beat_mode:
-        return
-    s = state.get()
-    queue = s.get("beat_queue", [])
-    ptr = s.get("beat_ptr", 0)
-    queue, ptr = beat_mod.advance(queue, ptr, reply)
-    state.update({"beat_queue": queue, "beat_ptr": ptr})
+    if is_beat_mode:
+        s = state.get()
+        queue = s.get("beat_queue", [])
+        ptr = s.get("beat_ptr", 0)
+        old_ptr = ptr
+        queue, ptr = beat_mod.advance(queue, ptr, reply)
+        advanced = ptr > old_ptr
+        state.update({"beat_queue": queue, "beat_ptr": ptr, "beat_just_advanced": advanced})
+    else:
+        state.update({"beat_just_advanced": False})
+    # 転換点injectionフラグをリセット（次の転換点で再発火できるよう）
+    state.update({"turning_point_injected": False})
 
 
 def _build_user_msg(action: str, dice_result: dict | None) -> str:
@@ -555,20 +554,19 @@ def check_ending(reply: str) -> bool:
     return ENDING_MARKER in reply
 
 PLOT_MODE_LABELS = {
-    "1": ("off", "プロット参照・誘導（プロットに沿うよう誘導するが逸脱自由）"),
+    "1": ("strong", "プロット参照・強拘束"),
     "2": ("adaptive", "プロット参照・適応（逸脱を検出して現在地で物語を再構成）"),
-    "3": ("strong", "プロット参照・強拘束"),
+    "3": ("off", "プロット参照・自由"),
     "4": ("improv", "プロットなし・即興"),
 }
 
 def ask_plot_mode() -> str:
-    exp_note = "（実験的）（40ターンで強制終了する場合あり）"
     print()
     print("物語の軸:")
-    print(f"  1. プロット参照・誘導（プロットに沿うよう誘導するが逸脱自由）{exp_note}")
-    print(f"  2. プロット参照・適応（逸脱を検出して現在地で物語を再構成）{exp_note}")
-    print("  3. プロット参照・強拘束（プロット強制回収）★初めてならこれを推奨")
-    print(f"  4. プロットなし・即興{exp_note}")
+    print("  1. プロット参照・強拘束（プロット強制回収）★初めてならこれを推奨")
+    print("  2. プロット参照・適応（逸脱を検出して現在地で物語を再構成）")
+    print("  3. プロット参照・自由（プロットに沿うよう誘導するが逸脱自由）")
+    print("  4. プロットなし・即興（GMが即興で物語を作る）")
     while True:
         choice = ask("選択 [1/2/3/4]: ")
         if choice in PLOT_MODE_LABELS:
@@ -604,6 +602,77 @@ def ask_difficulty() -> str:
             return preset
         system_print("1〜3のいずれかを入力してください。")
 
+def ask_gm_character() -> str:
+    """GMの一言コメントのあり/なしを番号入力で選択する。"""
+    print()
+    print("GMの一言コメント:")
+    print("  1. あり（シニカル）")
+    print("  2. なし")
+    while True:
+        choice = ask("選択 [1-2]: ")
+        if choice == "1":
+            system_print("GMの一言: あり（シニカル）")
+            return "cynical"
+        elif choice == "2":
+            system_print("GMの一言: なし")
+            return "none"
+        system_print("1か2を入力してください。")
+
+
+def _is_off() -> bool:
+    return state.get_plot_mode() == "off"
+
+
+def _handle_gm_char_and_turning_point(action: str, h: list) -> None:
+    """GMキャラクターのコメントと転換点による描写強化を処理する。
+    - GMキャラクターが設定されており転換点と判定された場合：コメントを表示
+    - 転換点かつturning_point_triggeredがFalseの場合：描写強化injectionをstateに記録
+    この関数はcall_gm()の前に呼ぶ。
+    """
+    s = state.get()
+    gm_character = s.get("gm_character", "none")
+
+    # beatモード（strong/adaptive再生成後/off）での転換点検出: コード側で判定
+    is_beat_mode = _is_strong() or (_is_adaptive() and s.get("adaptive_replotted", False)) or _is_off()
+    # improv または adaptive再生成前はLLMで判定
+    is_llm_judge = state.get_plot_mode() == "improv" or (_is_adaptive() and not s.get("adaptive_replotted", False))
+
+    is_turning_point = False
+
+    if is_beat_mode:
+        # beat_just_advanced=True のターンのみ転換点（1回だけ発動）
+        is_turning_point = s.get("beat_just_advanced", False)
+    elif is_llm_judge:
+        # improv / adaptive再生成前: 毎ターンLLMで判定
+        is_turning_point = check_turning_point(h, action)
+        if DEBUG_MODE and is_turning_point:
+            print("[TURNING] turning point detected (llm judge)", file=sys.stderr)
+
+    # GMキャラクターコメント（turning_pointの場合のみ）
+    if is_turning_point and gm_character != "none":
+        comment = generate_gm_char_comment(action, h, gm_character, gm_char_log=s.get("gm_char_log", []))
+        if comment:
+            gm_char_print(comment)
+            if DEBUG_MODE:
+                label = GM_CHAR_LABELS.get(gm_character, gm_character)
+                print(f"[GM_CHAR] {label}: {comment}", file=sys.stderr)
+            # コメントをstateに蓄積（JSONログに残す）
+            s = state.get()
+            log = list(s.get("gm_char_log", []))
+            log.append({
+                "turn": sum(1 for m in h if m["role"] == "user"),
+                "character": gm_character,
+                "comment": comment,
+            })
+            state.update({"gm_char_log": log})
+
+    # 転換点描写強化フラグをstateに記録
+    if is_turning_point:
+        state.update({"turning_point_triggered": True})
+        if DEBUG_MODE:
+            print("[TURNING] turning_point_triggered = True", file=sys.stderr)
+
+
 def start_new_game() -> tuple[list, str, str]:
     while not (genre := ask("ジャンル: ").strip()):
         system_print("ジャンルを入力してください。")
@@ -617,6 +686,10 @@ def start_new_game() -> tuple[list, str, str]:
     else:
         difficulty_preset = "normal"
 
+    gm_character = "none"
+    if not AUTO_PLAY_MODE:
+        gm_character = ask_gm_character()
+
     if plot_mode == "improv":
         system_print("プロット生成なし")
         plot = {}
@@ -625,7 +698,8 @@ def start_new_game() -> tuple[list, str, str]:
 
     state.init(genre, title, plot, plot_mode)
     state.update({"use_dice": use_dice, "difficulty_preset": difficulty_preset,
-                  "auto_play_mode": AUTO_PLAY_MODE or "manual"})
+                  "auto_play_mode": AUTO_PLAY_MODE or "manual",
+                  "gm_character": gm_character})
 
     if plot_mode in ("strong", "off") and plot:
         queue = beat_mod.build_queue(plot)
@@ -639,15 +713,22 @@ def start_new_game() -> tuple[list, str, str]:
 
     print()
     print(f"── 「{title}」 開始 ──")
-    protagonist = plot.get("protagonist", {}) if plot else {}
-    if protagonist.get("name"):
-        name = protagonist["name"]
-        print(f"あなたは{name}として、この物語を紡ぎます。")
-        print()
     system_print("行き詰まったら /hint で行動候補を表示できます。")
     print()
 
     reply = call_gm(_build_api_messages(h))
+    # 主人公名を表示（improvは開始シーンから抽出、他モードはプロットから取得）
+    if not reply.startswith("[ERROR"):
+        if plot_mode == "improv":
+            improv_name = extract_protagonist_name(reply)
+            if improv_name:
+                print(f"あなたは{improv_name}として、この物語を紡ぎます。")
+                print()
+        else:
+            protagonist = plot.get("protagonist", {}) if plot else {}
+            if protagonist.get("name"):
+                print(f"あなたは{protagonist['name']}として、この物語を紡ぎます。")
+                print()
     if reply.startswith("[ERROR"):
         error_print("応答生成に失敗しました。/retryで再試行できます。")
         # 自動プレイ時: エラー文字列がプレイヤーLLMに渡らないよう空文字にする
@@ -703,13 +784,28 @@ def resume_game() -> tuple[list, str, str] | None:
 
 def save_session_json(h: list, title: str) -> None:
     """AUTO_PLAYモード用: セッション全体をJSONで保存する。"""
-    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
     # Windows/Linux共通で問題になる文字を全て除去
     import re as _re
+    import subprocess as _sp
+    import os as _os
     safe_title = _re.sub(r'[\\/:*?"<>|\s]', "_", title)
     safe_title = safe_title.strip("_") or "session"
     play_mode = state.get().get("auto_play_mode", "manual")
-    filename = f"{safe_title}_{play_mode}_{timestamp}.json"
+    try:
+        commit_hash = _sp.check_output(
+            ["git", "rev-parse", "--short", "HEAD"],
+            cwd=_os.path.dirname(_os.path.abspath(__file__)),
+            stderr=_sp.DEVNULL, text=True
+        ).strip()
+    except Exception:
+        try:
+            _ver_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "VERSION")
+            with open(_ver_path, encoding="utf-8") as _vf:
+                commit_hash = _vf.read().strip()
+        except Exception:
+            commit_hash = "unknown"
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{safe_title}_{play_mode}_{timestamp}_{commit_hash}.json"
     data = {
         "state": state.get(),
         "history": h,
@@ -796,7 +892,8 @@ def run_single_session(plot_mode: str) -> None:
 
     state.init(genre, title, plot, plot_mode)
     state.update({"use_dice": BATCH_USE_DICE, "difficulty_preset": difficulty_preset,
-                  "auto_play_mode": AUTO_PLAY_MODE or "manual"})
+                  "auto_play_mode": AUTO_PLAY_MODE or "manual",
+                  "gm_character": BATCH_GM_CHARACTER})
 
     if plot_mode in ("strong", "off") and plot:
         queue = beat_mod.build_queue(plot)
@@ -817,7 +914,7 @@ def run_single_session(plot_mode: str) -> None:
         print()
 
     reply = call_gm(_build_api_messages(h))
-    if reply.startswith("[ERROR"):
+    if reply == "[CONTEXT_LIMIT]" or reply.startswith("[ERROR"):
         error_print("初回応答生成に失敗しました。このセッションをスキップします。")
         return
     h = hist.add_assistant(h, reply)
@@ -873,7 +970,15 @@ def run_single_session(plot_mode: str) -> None:
         user_msg = _build_user_msg(action, dice_result)
         h = hist.add_user(h, user_msg)
 
+        # GMキャラクターコメント + 転換点フラグ設定
+        _handle_gm_char_and_turning_point(action, h)
+
         reply = call_gm(_build_api_messages(h))
+        if reply == "[CONTEXT_LIMIT]":
+            system_print("コンテキスト上限に達し続行不可能の為、物語をここで終了します。")
+            state.update({"end_reason": "context_limit"})
+            save_session_json(h, title)
+            break
         if reply.startswith("[ERROR"):
             error_print("応答生成に失敗しました。スキップして続行します。")
             h.pop()
@@ -884,7 +989,7 @@ def run_single_session(plot_mode: str) -> None:
         _after_reply(reply)
 
         if check_ending(reply):
-            _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False)) or _is_off()
+            _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False))
             if _use_beat_suppression and not state.get().get("ending_suppressed", False):
                 s = state.get()
                 queue = s.get("beat_queue", [])
@@ -959,11 +1064,12 @@ def main():
         plot_mode = ask_plot_mode()
         print()
         # ダイス設定を1回だけ手入力
-        global BATCH_USE_DICE, BATCH_DIFFICULTY
+        global BATCH_USE_DICE, BATCH_DIFFICULTY, BATCH_GM_CHARACTER
         BATCH_USE_DICE = ask_use_dice()
         if BATCH_USE_DICE:
             BATCH_DIFFICULTY = ask_difficulty()
             dice_mod.set_difficulty_preset(BATCH_DIFFICULTY)
+        BATCH_GM_CHARACTER = ask_gm_character()
         print()
         for i in range(BATCH_COUNT):
             print(f"═══ バッチ {i+1}/{BATCH_COUNT} ═══")
@@ -1090,6 +1196,11 @@ def main():
                             queue[new_ptr]["done"] = False
                         state.update({"beat_ptr": new_ptr, "beat_queue": queue})
             reply = call_gm(_build_api_messages(h))
+            if reply == "[CONTEXT_LIMIT]":
+                system_print("コンテキスト上限に達し続行不可能の為、物語をここで終了します。")
+                state.update({"end_reason": "context_limit"})
+                save_mod.save(state.get(), h)
+                break
             if reply.startswith("[ERROR"):
                 error_print("応答生成に失敗しました。/retryで再試行できます。")
                 pending_failed = True
@@ -1098,7 +1209,7 @@ def main():
             h = hist.add_assistant(h, reply)
             _after_reply(reply)
             if check_ending(reply):
-                _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False)) or _is_off()
+                _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False))
                 if _use_beat_suppression and not state.get().get("ending_suppressed", False):
                     s = state.get()
                     queue = s.get("beat_queue", [])
@@ -1149,6 +1260,9 @@ def main():
         user_msg = _build_user_msg(action, dice_result)
         h = push_user(h, user_msg, pending_failed)
 
+        # GMキャラクターコメント + 転換点フラグ設定
+        _handle_gm_char_and_turning_point(action, h)
+
         reply = call_gm(_build_api_messages(h))
 
         if reply.startswith("[ERROR"):
@@ -1164,8 +1278,8 @@ def main():
         _after_reply(reply)
 
         if check_ending(reply):
-            # strong / adaptive再生成後 / offのエンディング早出し抑止
-            _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False)) or _is_off()
+            # strong / adaptive再生成後のエンディング早出し抑止
+            _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False))
             if _use_beat_suppression and not state.get().get("ending_suppressed", False):
                 s = state.get()
                 queue = s.get("beat_queue", [])

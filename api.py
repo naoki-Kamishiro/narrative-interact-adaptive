@@ -47,6 +47,9 @@ def chat(messages: list) -> str:
         )
         return response.choices[0].message.content.strip()
     except Exception as e:
+        err = str(e)
+        if "exceed_context_size_error" in err or "exceeds the available context size" in err:
+            return "[CONTEXT_LIMIT]"
         return f"[ERROR: {e}]"
     finally:
         stop_event.set()
@@ -122,7 +125,6 @@ def generate_genre_title(genre: str = "") -> dict:
         return {"error": f"JSON not found in response: {raw}"}
     except Exception as e:
         return {"error": str(e)}
-
 
 
 def check_deviation(actions: list[str], plot_keywords: list[str]) -> bool:
@@ -222,6 +224,130 @@ def regenerate_plot(recent_history: list[dict], genre: str) -> str:
         return {}
     except Exception:
         return {}
+
+
+def extract_protagonist_name(opening_scene: str) -> str:
+    """improvモード用: GMが生成した開始シーンから主人公名を抽出する。
+    名前が不明な場合は空文字を返す。
+    """
+    prompt = (
+        f"以下はテキストRPGの冒頭シーンです。\n\n"
+        f"{opening_scene}\n\n"
+        f"このシーンでプレイヤーが操作する主人公の名前を1つだけ答えてください。\n"
+        f"名前が明示されていない場合は「主人公」と答えてください。\n"
+        f"名前のみを出力してください。説明・句読点・括弧は不要です。"
+    )
+    messages = [
+        {"role": "system", "content": "あなたは小説の登場人物を識別するアシスタントです。"},
+        {"role": "user", "content": prompt},
+    ]
+    try:
+        client = get_client()
+        response = client.chat.completions.create(
+            model="local",
+            messages=messages,
+            max_tokens=16,
+            temperature=0.0,
+        )
+        name = response.choices[0].message.content.strip()
+        # 余分な記号・改行を除去
+        import re as _re
+        name = _re.sub(r'[「」『』【】\(\)（）\n]', '', name).strip()
+        return name if name else ""
+    except Exception:
+        return ""
+
+
+def check_turning_point(recent_history: list[dict], action: str) -> bool:
+    """improvモード用: 直近の履歴とプレイヤー行動が物語の大きな転換点かを判定する。
+    LLMにyes/noで答えさせる。エラー時はFalseを返す（安全側に倒す）。
+    """
+    # 直近5ターン分のassistantメッセージ（GM描写）を取得
+    gm_msgs = [m["content"][:300] for m in recent_history if m["role"] == "assistant"][-5:]
+    history_text = "\n".join(f"- {t}" for t in gm_msgs) if gm_msgs else "（なし）"
+    prompt = (
+        f"以下はテキストRPGの直近のGM描写です。\n\n"
+        f"{history_text}\n\n"
+        f"プレイヤーの行動: {action}\n\n"
+        f"このプレイヤーの行動が、物語全体を通じて最も重要な瞬間の一つですか？\n"
+        f"以下のいずれかに該当する場合のみ「yes」：\n"
+        f"・登場人物の関係・状況が不可逆に変化する\n"
+        f"・隠されていた事実・真実が明らかになる\n"
+        f"・物語の方向性を決定的に変える選択・衝突・結末が起きる\n"
+        f"それ以外（探索・移動・会話・情報収集・日常的な行動・小さな成否）は「no」。\n"
+        f"「yes」か「no」の1単語のみで答えてください。"
+    )
+    messages = [
+        {"role": "system", "content": "あなたはテキストRPGの進行を補助するシステムです。"},
+        {"role": "user", "content": prompt},
+    ]
+    try:
+        client = get_client()
+        response = client.chat.completions.create(
+            model="local",
+            messages=messages,
+            max_tokens=4,
+            temperature=0.0,
+        )
+        answer = response.choices[0].message.content.strip().lower()
+        return answer.startswith("yes")
+    except Exception:
+        return False
+
+
+GM_CHAR_PROMPTS = {
+    "cynical": (
+        "あなたはテキストRPGのGMで、シニカルな性格のキャラクターです。\n"
+        "プレイヤーの行動の具体的な内容に触れて、斜に構えた一言コメントをしてください。\n"
+        "15字以内の一言のみ。説明・句読点・改行は最小限。"
+    ),
+}
+
+GM_CHAR_LABELS = {
+    "cynical": "シニカル",
+}
+
+
+def generate_gm_char_comment(action: str, recent_history: list[dict], character: str, gm_char_log: list[dict] | None = None) -> str:
+    """GMキャラクターの一言コメントを生成する。
+    character: "tsukkomi" / "cynical" / "worrier"
+    gm_char_log: これまでの全コメント履歴（繰り返し抑止用）
+    エラー時は空文字を返す。
+    """
+    sys_prompt = GM_CHAR_PROMPTS.get(character)
+    if not sys_prompt:
+        return ""
+    # 直近3ターンのGM描写を参考として渡す
+    gm_msgs = [m["content"][:100] for m in recent_history if m["role"] == "assistant"][-3:]
+    context = "\n".join(f"- {t}" for t in gm_msgs) if gm_msgs else ""
+    # これまでの全コメント（繰り返し抑止）
+    past_comments = ""
+    if gm_char_log:
+        comments = [entry["comment"] for entry in gm_char_log if "comment" in entry]
+        if comments:
+            past_comments = "【これまでに使ったコメント（語尾・語法のパターンを読み取り、同じパターンを繰り返さないこと）】\n" + "\n".join(f"- {c}" for c in comments) + "\n\n"
+    user_content = f"{past_comments}直近の状況:\n{context}\n\nプレイヤーの行動: {action}" if context else f"{past_comments}プレイヤーの行動: {action}"
+    messages = [
+        {"role": "system", "content": sys_prompt},
+        {"role": "user", "content": user_content},
+    ]
+    try:
+        client = get_client()
+        response = client.chat.completions.create(
+            model="local",
+            messages=messages,
+            max_tokens=32,
+            temperature=0.9,
+        )
+        comment = response.choices[0].message.content.strip()
+        # 複数行になった場合は1行目のみ
+        comment = comment.split("\n")[0].strip()
+        # 長すぎる場合は切り捨て
+        if len(comment) > 30:
+            comment = comment[:30]
+        return comment
+    except Exception:
+        return ""
 
 
 def chat_json(messages: list) -> str:

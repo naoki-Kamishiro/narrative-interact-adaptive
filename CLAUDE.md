@@ -10,8 +10,8 @@ LM Studio用インタラクティブフィクションシステム。
 
 ## リポジトリ運用方針（セッション跨ぎ必読）
 
-- **narrative-interact**（本流）：安定版。ユーザーが配布・使用する版。慎重に変更する。
-- **narrative-interact-adaptive**（このリポジトリ）：不安定版・実験場。試験的修正はここで先行実装し、安定確認後に本流へマージする。
+- **narrative-interact**（このリポジトリ・本流）：安定版。ユーザーが配布・使用する版。慎重に変更する。
+- **narrative-interact-adaptive**（フォーク）：不安定版・実験場。試験的修正はここで先行実装し、安定確認後に本流へマージする。
 
 ---
 
@@ -23,30 +23,21 @@ LM Studio用インタラクティブフィクションシステム。
 - **strongのプロンプト・コード・設定は今後いかなる修正も行わない。**
 - **新しい修正を加える前に「strongに影響しないか」を必ず確認すること。**
 
-**今後のブラッシュアップ対象：off/on/improvのみ。**
-- off/on/improvは「実験的モード」として位置づけ。
-- strongが完成したため、これらの根本問題に着手する段階に入る。
+**全モード検証完了。v1.0.0リリース済み（2026年10月26日）。**
+- strongモード：凍結済み。
+- adaptiveモード：通常・逸脱バッチ各5本で全ending正常終了を確認済み（2026年10月24日）。
+- offモード：通常・逸脱バッチ各5本で全ending正常終了を確認済み（2026年10月24日）。平均30ターン程度。
+- improvモード：通常・逸脱バッチ各5本で全ending正常終了を確認済み（2026年10月24日）。平均30ターン程度。
+- 40ターン到達ケースはauto_playのプレイヤーLLM固有の細切れ行動が原因。手動プレイでは再現しない。
+- 「実験的モード」表示は全モードで廃止。
 
-**off/on/improvの根本問題（着手保留）**
-- 「どこにいても終われる」ことができない根本的ジレンマが未解決。
-- NPCと接触しないまま漂流した場合の出口がない。
-- 着地点を渡すとGMが「まだ到達していない」と判断、渡さないと謎が解けないまま終わる。
-- Gemma4 12Bでoff/improvが成立するかどうか自体が未検証。
-- **strongが満足いく状態になったら着手する。**
+**offモードの現状**
+- 誘導形beat injectionを実装済み（プロットに沿うよう誘導するが逸脱は許容）。
+- beatキューが尽きたらsoft ending promptをinjection。
 
-**プロンプト肥大化について（2026年10月22日時点）**
-- SYSTEM_GM_BASEおよびPLOT_MODE_RULESは問題対処の積み重ねで相当量に達している。
-- 理論上の競合（固定層のエンディング条件がstrongのPLOT_MODE_RULESと矛盾する等）は存在するが、実害は現時点で未確認。
-- **実害が確認されるまでは競合整理・ルール削除を行わない。** 削ると以前の問題が再燃するリスクがある。
-- 問題が出たときはCLAUDE.mdの修正履歴に「どのルールが悪さをしたか」を記録し、それを根拠に整理する。
-
----
-
-## ログ要約の運用（凍結・2026年10月23日）
-
-**ログ要約ワークフローは凍結。ログJSONを添付されても要約・pushは行わない。**
-- logs/ ディレクトリは残すが、今後は更新しない
-- 凍結理由：実際に参照されておらず、トークンの無駄と判断
+**improvモードの現状**
+- 通常・逸脱バッチ各5本で全ending正常終了を確認済み（2026年10月24日）。
+- 手動での逸脱プレイでも30ターン以内で完了を確認。
 
 ---
 
@@ -56,20 +47,19 @@ LM Studio用インタラクティブフィクションシステム。
 - 上位モデルからの分析・意見がある場合は、その内容を直接読んで照合してから実装すること。
 - **新セッション開始時はこのファイル（CLAUDE.md）を最初に読むこと。**
 - **ファイルを変更したら必ずgit pushすること。**
-- **pushは必ず `git push origin init-branch:main --force` でmainブランチにも反映すること。** ユーザーはzipダウンロードで使用しているため、init-branchだけにpushしても反映されない。
 
 ### plot_modeの修正優先度について
 
 物語の軸（plot_mode）は以下の4種：
-1. off：プロット参照・自由（プロット回収義務なし）
-2. on：プロット参照・緩拘束（添うが逸脱可）
+1. off：プロット参照・誘導（beat injectionで誘導するが逸脱自由）
+2. adaptive：プロット参照・適応（逸脱検出→プロット再生成→beat制御で着地）
 3. strong：プロット参照・強拘束（強制回収）
 4. improv：プロットなし・即興
 
-**「必ず回収・終わらせる」責務を持つのはstrongのみ。** off/on/improvにプロット回収を求めない。
-**共通の最重要ゴールは「終われること」。** それさえ満たせれば1・2・4への追加修正は不要。
+**「必ず回収・終わらせる」責務を持つのはstrongとadaptive（再生成後）。** off/improvにプロット回収を求めない。
+**共通の最重要ゴールは「終われること」。**
 
-**strongのプロンプトは一切変更しない。** off/on/improvの改善のみ行うこと。strongへの影響がゼロであることを確認してから実装すること。
+**strongのプロンプトは一切変更しない。** off/adaptive/improvの改善のみ行うこと。strongへの影響がゼロであることを確認してから実装すること。
 
 ---
 
@@ -119,9 +109,9 @@ GMの行動原則を定義する。**追加するルールは必ず既存ルー�
 AUTO_PLAY_MODEでのプレイヤーLLMのシステムプロンプト。
 
 - NORMAL：主人公として臨機応変に行動
-- DEVIATE：主人公として逸脱プレイ（GM制約を意図的に超える行動）
+- DEVIATE：「GMが提示した展開・誘導・フックを敢えて無視するか、逆の行動をする」という能動的な逸脱フレーミング。固執ループ抑止ルールはNORMALより少なく逸脱性を維持。
 
-主な制約の経緯：
+主な制約の経緯（NORMAL）：
 
 - **繰り返し禁止**（直前と同じ対象・動作の組み合わせ禁止、3回同種行動で移動）
   → 自動プレイ時にプレイヤーLLMがループする問題への対処。
@@ -135,6 +125,10 @@ AUTO_PLAY_MODEでのプレイヤーLLMのシステムプロンプト。
 
 - **世界観外アイテムの持ち込み禁止**
   → ホラー医療もので「銃」を使うような世界観不整合への対処。
+
+DEVIATE固有：
+- **同一対象への動詞変更ループ抑止**（同じ対象への行動が動詞を変えながら3回続いたら別対象へ）
+  → 「首を絞める→力を込める→床に叩きつける」のような動詞変更ループへの対処。
 
 ---
 
@@ -220,7 +214,7 @@ python main.py --deviate --batch 3
 
 対象ユーザー：ローカルLLM利用者（LM Studio使用者）
 ターゲットモデル：Gemma4 12B
-公開形式：未定
+公開形式：GitHub（v1.0.0）
 
 ---
 
@@ -449,86 +443,346 @@ GMが「情報獲得」を「目標達成」と誤解してエンディングを
 - off/on/improvの各PLOT_MODE_RULESに追加：「直前のターンで新たな目標・手掛かり・情報が提示された場合、それを無視してエンディングにしない」
 - strongには一切触れない
 
-### 2026年10月（フォークリポジトリ naoki-Kamishiro/narrative-interact-adaptive）：adaptiveモード実装
+### 2026年10月（commit 1b92343）：adaptiveモードを本流にマージ（onモードを置き換え）
 
-onモードの根本問題（逸脱後に終われない・ターン数上限到達）を解決するため、`narrative-interact-adaptive` リポジトリにフォークしてadaptiveモードを新設。onモードをadaptiveで置き換え（UIも内部plot_mode名も）。
+`narrative-interact-adaptive` フォークで検証済みの adaptive モードを本流 `narrative-interact` に移植。
+onモードを廃止し、adaptiveモードで置き換え（UI表示・内部 plot_mode 名ともに `adaptive`）。
 
 **adaptiveモードの設計思想**
 - 逸脱を「失敗」ではなく「物語の転換点」として扱う
-- 逸脱が大きいと判断したら、直近の展開で新しいプロットを再生成してbeat制御で着地させる
-- 再生成後はstrongモードと同等の着地保証（完全にターン上限を回避）
-- ジャンル変化OK（ギャグ→神話など）
+- 逸脱が大きいと判断したら直近の展開から新プロットを再生成し、beat制御で着地させる
+- 再生成後はstrongモードと同等の着地保証（ターン上限を実質的に回避）
+- ジャンル変化OK（例：ギャグ→神話）
 
 **逸脱検出の仕組み（2段階）**
 - 毎ターン `check_deviation()` を呼び出してyes/no判定（temperature=0.0, max_tokens=4）
-- deviation_count >= 3：警告injection（「物語を元の流れへ戻すか、現在地で新展開を作ること」）
+- deviation_count >= 3：警告injection（「エンディングの機会があれば迷わず終わらせること」）
 - deviation_count >= 5：`_do_adaptive_replot()` でプロット再生成 → beat制御に移行
 
-**再生成プロットの仕様**
-- `regenerate_plot(direct近20メッセージ, genre)` → JSON形式の新プロット
-- 返却フォーマット：new_genre, protagonist_goal, key_npc, climax_situation, ending_scene, beats（3件）
-- 再生成後はhistory先頭のsystemメッセージを新プロット用プロンプトに差し替え
-- `adaptive_replotted=True` にセット → 以降の逸脱判定は行わない
+**変更ファイル（本流）**
 
-**変更ファイル**
+- `state.py`：`deviation_count` / `peak_deviation_count` / `adaptive_replotted` を追加
+- `api.py`：`check_deviation()` / `regenerate_plot()` を追加
+- `prompt.py`：PLOT_MODE_RULES の `"on"` → `"adaptive"` に変更、`build_adaptive_replot_system_prompt()` を追加
+- `main.py`：
+  - PLOT_MODE_LABELS の2番を adaptive に変更
+  - `_is_adaptive()` / `_get_plot_keywords()` / `_do_adaptive_replot()` / `_build_adaptive_beat_queue()` を追加
+  - `_build_api_messages()` に adaptive 逸脱検出→警告injection→再生成→beat着地ロジックを追加
+  - `_after_reply()` を adaptive_replotted 時もビート進行するよう更新
+  - エンディング抑止条件を adaptive_replotted 時にも適用（3箇所）
+  - 25ターン超の収束injection を追加（off/adaptive/improvのみ）
 
-`state.py`：
-- `init()` に `deviation_count: 0`、`adaptive_replotted: False` を追加
+**strongへの影響：ゼロ。** adaptive処理はすべて `_is_adaptive()` ブロックで完全分離。
 
-`api.py`：
-- `check_deviation(actions, plot_keywords) -> bool` を追加（check_fixationと同様の軽量LLM呼び出し）
-- `regenerate_plot(recent_history, genre) -> dict` を追加（max_tokens=1024, temperature=0.7）
+**UI変更**
+- adaptiveモードを「実験的」表示なしで提供（再生成後はbeat制御による着地保証があるため）
+- 逸脱検出・再生成のシステムメッセージはDEBUG_MODEのみstderrに出力（プレイヤーには見せない）
 
-`prompt.py`：
-- PLOT_MODE_RULES の `"on"` キーを `"adaptive"` に変更（内容はoff/on系のルールを継承）
-- `build_adaptive_replot_system_prompt(new_plot, genre) -> str` を追加（strongと同等のPLOT_MODE_RULES適用）
+### 2026年10月（commit 154c2ae / c876b70）：check_fixation削除・PLAYER_SYSTEM_DEVIATE刷新・adaptive正式化
 
-`main.py`：
-- PLOT_MODE_LABELS: `"2": ("adaptive", "プロット参照・適応（逸脱を検出して現在地で物語を再構成）")`
-- `_is_adaptive() -> bool` を追加
-- `_get_plot_keywords(plot) -> list[str]` を追加（逸脱判定用キーワード最大5件を抽出）
-- `_do_adaptive_replot(h) -> None` を追加（プロット再生成・systemプロンプト差し替え・beatキュー構築）
-- `_build_adaptive_beat_queue(new_plot) -> list` を追加（再生成プロットからビートキューを動的生成）
-- `_build_api_messages()` にadaptive逸脱検出ロジックを追加（fixation処理の直前、strongは非影響）
-- `_after_reply()` のbeat進行条件を `_is_strong() or (_is_adaptive() and adaptive_replotted)` に拡張
-- エンディング抑止3箇所を `_use_beat_suppression` に統一（adaptive_replotted時もbeat抑止を適用）
+**check_fixation の完全削除**
+check_fixationはadaptiveモードへの移行に伴い不要となり削除済み。
+- `api.py` から `check_fixation()` を削除
+- `main.py` から fixation_count・fixation_ending・check_fixation呼び出しを削除
+- `state.py` から fixation_count・fixation_ending を削除
+- end_reason の "fixation" は廃止。現在の end_reason は "ending" / "turn_limit" / "player_error" の3種のみ
 
-**strongへの影響**
-- adaptive処理はすべて `if _is_adaptive():` ブロックで完全分離
-- SYSTEM_GM_BASE（固定層）への変更ゼロ
-- strongのPLOT_MODE_RULESへの変更ゼロ
+**PLAYER_SYSTEM_DEVIATE の刷新**
+固執ループを抑制する多数のルールを削除し、「GMの誘導を敢えて無視するか逆の行動をする」という能動的な逸脱フレーミングに変更。
+- 削除：「直前と同じ対象・動作の組み合わせ禁止」「失敗2回連続で別対象へ」等
+- 残存：「同じ対象への行動が動詞を変えながら3回続いたら別対象へ」（DEVIATEの逸脱性維持のため最低限のみ）
+- 効果：adaptiveモードのdeviate5本バッチで全ending正常終了を確認
 
-### 2026年10月（今セッション）：ターン数過多への収束injection追加
+**adaptiveモード【開発中】ラベル削除**
+- `main.py` PLOT_MODE_LABELS および `ask_plot_mode()` から「【開発中】」を削除
+- `README.md` / `README_EN.md` から「【開発中】」「[In Development]」を削除
+- 根拠：通常・逸脱各5本バッチで全ending正常終了を確認済み
 
-SF「星霜の残響」（adaptive/normal）で逸脱ゼロ・固執ゼロのまま40ターン上限に達した。
-原因：プレイヤーが真面目にプロットを追っているが、GMが自力で物語を収束・終了させられなかった。
+### 2026年10月（今セッション）：offモード通常・逸脱バッチ検証
 
-- `main.py` の `_build_api_messages()` に追加：ターン数が25を超えたら毎ターン「現在の状況から自然にエンディングへ収束させること」のinjectionを挿入
-- `_is_strong()` がFalseのとき（off/adaptive/improvのみ）に発動
+**off/normalバッチ再検証（5本）**
+全5本がend_reason: "ending"で正常終了。平均30ターン前後。Gemini評価良好。
+早期ending（5〜7ターン）の再現なし。
+
+**off/deviateバッチ検証（5本）**
+全5本がend_reason: "ending"で正常終了。40ターンでエンディングに至ったケースが1件あり。Gemini評価良好。
+
+**判断**
+早期ending問題は実質的に解消。ただし40ターン到達ケースが存在するため「実験的モード」表示は維持する。
+CLAUDE.md の「次のブラッシュアップ対象」をimprovに更新。
+
+### 2026年10月（今セッション）：improvモード通常・逸脱バッチ検証
+
+**improv/normalバッチ（5本）**
+全5本がend_reason: "ending"で正常終了。平均30ターン。Gemini評価良好。
+
+**improv/deviateバッチ（5本）**
+全5本がend_reason: "ending"で正常終了。平均約30ターン。Gemini評価良好。1本のみ40ターン到達。
+根本問題（プロット拘束なしによる漂流リスク）は未解決だが、手動プレイでは30ターン以内で完了することを確認。
+
+### 2026年10月（commit 9a064bc）：improvモード「あなたは～として」表示を追加・全モード表示順を統一
+
+improvモードでは`protagonist.get("name")`が常に空のため「あなたは～として、この物語を紡ぎます。」が表示されなかった。
+
+- `api.py` に `extract_protagonist_name(opening_scene)` を追加（max_tokens=16, temperature=0.0）
+  - GMが生成した開幕シーンから主人公名を抽出する軽量LLM呼び出し
+  - 名前が明示されていない場合は「主人公」を返す
+- `main.py` の主人公名表示ブロックを `call_gm()` の後に移動し全モードで統一
+  - improvは `extract_protagonist_name(reply)` で名前を取得して表示
+  - 他モードは `protagonist.get("name")` から取得（従来通り）
+  - 表示順：本文 → 「あなたは{name}として、この物語を紡ぎます。」（全モード共通）
 - strongへの影響ゼロ
 
-### 2026年10月（commit 74100e9）：adaptive中間ビートを誘導形injectionに変更
+### 2026年10月（今セッション）：「実験的モード」表示廃止・コンテキスト上限対処
 
-adaptive再生成後のビートが「命令形」だったため、GMがプレイヤーの行動（帰宅・就寝等）を無視して場面を強制する問題が発生。
+**「実験的モード」表示を全モードで廃止**
+- off/improv 通常・逸脱各5本バッチで全ending正常終了確認済み
+- 40ターン到達ケースはauto_playのプレイヤーLLM固有の細切れ行動が原因（手動プレイでは再現しない）
+- main.py `ask_plot_mode()` から `exp_note` と関連表示を削除
+- README.md / README_EN.md の off/improv 行から実験的注記を削除
+- CLAUDE.md の現状記述を「全モード検証完了・v1.0.0リリース準備段階」に更新
 
-- `_build_adaptive_beat_queue()` の中間ビートinjectionを「GMへの場面指示: 〜すること」→「GMへの誘導: 〜という展開に自然につながるよう場面を進めること。ただしプレイヤーの行動は必ず受理すること。」に変更
-- ending beat（着地点への誘導）は命令形を維持（着地保証のため）
-- strongへの影響ゼロ
+**コンテキスト上限到達時の専用終了処理を追加**
+- api.py `chat()` でLM Studioの `exceed_context_size_error` / `exceeds the available context size` を検出 → `[CONTEXT_LIMIT]` を返す
+- main.py `call_gm()` でリトライせず即返す
+- 手動・自動プレイ両ループで「コンテキスト上限に達し続行不可能の為、物語をここで終了します。」を表示して終了
+- end_reason="context_limit" として記録
+- バッチ時は該当セッションのみ終了し次セッションへ継続
 
-### 2026年10月（今セッション）：offモードを「プロット参照・誘導」に改名・誘導形beat injection追加
+### 2026年10月（今セッション）：GMキャラクター機能・転換点による描写強化を実装
 
-offモードを「自由」から「誘導」に方針変更。プロット要素をbeatとして注入してGMに誘導させるが、逸脱は完全に許容する。
+**GMキャラクター機能**
+プレイヤーの行動に対し、選択したGMキャラクターが一言コメントを返す機能を実装。本文生成とは完全に独立した別呼び出し。
+
+- `state.py`：`gm_character`（"none"/"tsukkomi"/"cynical"/"worrier"）を追加
+- `display.py`：`gm_char_print()`（シアン表示）、`gm_turning_point_print()`（マゼンタ表示）を追加
+- `api.py`：`GM_CHAR_PROMPTS`・`GM_CHAR_LABELS` dict、`generate_gm_char_comment()` を追加（temperature=0.9, max_tokens=32）
+- `main.py`：`GM_CHARACTER_LABELS` dict、`ask_gm_character()` を追加。`start_new_game()` でAUTO_PLAY_MODE以外の時に選択画面を表示
+- AUTO_PLAY_MODE時はコメント生成・表示をスキップ（バッチログに混入させない）
+- キャラクターなし（"none"）選択時はLLM呼び出し自体をスキップ
+
+**転換点による描写強化**
+ビートが進んだターン（strong/adaptive/off）またはLLM判定で転換点を検出したターン（improv）に、GMへのinjectionで描写を強化する機能を実装。
+
+- `state.py`：`turning_point_triggered`・`turning_point_injected` フラグを追加
+- `api.py`：`check_turning_point()` を追加（improv用LLM判定、temperature=0.0, max_tokens=4）
+- `main.py`：`_handle_gm_char_and_turning_point(action, h)` を追加
+  - ビートモード（strong/adaptive-replotted/off）：beat_ptr > 0 かつ直前ビートdone = 転換点
+  - improvモード：`check_turning_point()` 判定（未発動の場合のみ）
+  - 転換点検出時：GMキャラコメント生成（gm_characterが"none"でない場合）＋`turning_point_triggered`をTrueに
+- `_build_api_messages()` 末尾に転換点injection追加
+  - `turning_point_triggered=True` かつ `turning_point_injected=False` のターンのみ発火
+  - ユーザーメッセージ末尾に「このターンは物語の転機です。通常より詳細に、丁寧に描写すること。文字数制限は解除する。」を追加
+  - `turning_point_injected=True` にセット（以降は再発火しない）
+- 両機能の呼び出しを手動プレイループ・`run_single_session()`の両箇所に追加（strongは除外）
+- strongへの影響ゼロ（`if not _is_strong():` ブロックで完全分離）
+
+### 2026年10月（今セッション・続き）：GMキャラクター複数回発動バグ修正
+
+初期実装でGMキャラコメントが1セッション中1回しか出ない問題。
+
+**原因**：`_handle_gm_char_and_turning_point()` に `not turning_triggered` 条件があり、1回発動後に二度とTrueにならなかった。
+
+**修正内容**
+- `_handle_gm_char_and_turning_point()` の条件から `not turning_triggered` を削除（転換点ごとに毎回発動）
+- `_build_api_messages()` で injection発火後に `turning_point_triggered=False` にリセット（injection済み後は再注入しない）
+- `_after_reply()` で GM応答後に `turning_point_injected=False` にリセット（次の転換点で再び発火できるよう）
+
+**動作フロー（修正後）**
+1. 転換点検出 → `turning_point_triggered=True`、GMコメント表示
+2. `_build_api_messages()` → injection発火、`turning_point_triggered=False` / `turning_point_injected=True`
+3. GM応答後 `_after_reply()` → `turning_point_injected=False` にリセット
+4. 次の転換点で1から繰り返し
+
+### 2026年10月（今セッション）：バッチ処理でGMキャラクター選択対応・improvモード修正漏れ解消
+
+**バッチ処理でGMキャラクター選択に対応**
+バッチ実行時にGMキャラクターが常に"none"固定だった問題。バッチはデバッグ用途のためコメント出力も有効にした。
+- `BATCH_GM_CHARACTER` グローバルを追加
+- バッチ開始前に `ask_gm_character()` を1回呼び出し（`ask_use_dice()`/`ask_difficulty()` と同様）
+- `run_single_session()` の `state.update()` に `"gm_character": BATCH_GM_CHARACTER` を追加
+- `not AUTO_PLAY_MODE` ガードを削除（バッチでもGMキャラコメントを表示）
+
+**improvモードの転換点検出が1回しか発動しない修正漏れを解消**
+前セッションでbeatモードの `not turning_triggered` 条件を削除したが、improvモード側に同条件が残っていた。
+- `_handle_gm_char_and_turning_point()` のimprovブロックから `if not turning_triggered:` を削除
+- 全モードで転換点ごとに毎回GMキャラコメント・描写強化が発動するようになった
+
+**転換点ターンのGM本文をマゼンタで表示する処理を追加**
+`gm_turning_point_print()` はdisplay.pyに実装・importされていたが、呼び出し箇所がなかった（実装漏れ）。
+- `call_gm()` 内の表示処理を `turning_point_injected` フラグで分岐
+- フラグがTrueのターン（=転換点injection発火済み）は `gm_turning_point_print()`（マゼンタ）で表示
+- それ以外は従来通り `gm_print()`（白）で表示
+
+### 2026年10月（今セッション）：転換点検出バグ修正（off/adaptive/improv）
+
+バッチ5本でGMキャラコメントも転換点マゼンタも一度も出なかった問題の原因調査・修正。
+
+**バグ1：offモードでbeat_ptrが進まない**
+`_after_reply()` が `strong` と `adaptive再生成後` のみビートを進めており、`off` が含まれていなかった。
+転換点判定では `off` を beat モードとして `ptr > 0` で判定しているが、ptr が常に 0 のため一度も転換点が発火しなかった。
+- `_after_reply()` の `is_beat_mode` に `or _is_off()` を追加
+
+**バグ2：adaptive（再生成前）が転換点検出をスキップ**
+`_handle_gm_char_and_turning_point()` の分岐が `is_beat_mode` と `is_improv` の2択で、
+`adaptive`（再生成前）はどちらにも該当しないためスキップされていた。
+- `is_improv` を `is_llm_judge` に変更し、`improv OR (adaptive かつ 再生成前)` の条件でLLM判定を行うよう修正
+
+### 2026年10月（今セッション）：GMキャラクター・転換点をstrongモードにも対応
+
+offモードのbuild_queue未呼び出しバグ（GMキャラコメント未発動）を修正し、あわせてstrongにも対応。
+
+**offモードbuild_queue修正（commit eb00e95）**
+offモードで `beat_queue` が常に空だったため、`beat_ptr` が進まず転換点が検出されず、GMキャラコメントが一度も発動しなかった。
+- `start_new_game` / `load_session` / `run_single_session` の3箇所で `plot_mode == "strong"` → `plot_mode in ("strong", "off")` に変更
+
+**strongモードへの対応（commit 9601314）**
+`_handle_gm_char_and_turning_point()` 呼び出しを `if not _is_strong():` でガードしていたため、strongでGMキャラコメントと転換点injectionが発動しなかった。
+- 2箇所の `if not _is_strong():` ガードを削除
+- strongのプロンプト・beat制御・プロット生成には一切触れておらず、凍結ルールに抵触しない変更
+
+---
+
+### 次バージョンリリース方針（v1.1.0予定）
+
+GMキャラクター機能・転換点による描写強化の動作試験完了後にv1.1.0としてリリースする。
+
+**リリース手順**
+1. README.md / README_EN.md のタイトルを `v1.1.0` に変更
+2. `git tag v1.1.0` でタグを打つ
+3. `git push origin v1.1.0` でGitHubにタグを上げる
+4. GitHubのReleasesページで `v1.1.0` のリリースを作成
+
+`v1.0.0` タグはそのまま残す（古いバージョンへのアクセス維持）。
+
+**動作試験が完了するまでリリースしない。**
+
+### 2026年10月（今セッション・続き）：GMキャラコメントをJSONログに記録
+
+Gemini評価時にGMキャラコメントが「ログ非保持のためスキップ」と判定され、評価・デバッグ不能だった。
 
 **変更内容**
-- `main.py` `_is_off()` 関数を追加
-- `main.py` `_build_api_messages()` にoff用誘導形beat injection処理を追加：
-  - beatキューが存在する場合は `hist.build_for_api_with_beat()` でbeat injectionを行う
-  - beatキューが尽きた場合は着地点テキストを使ったsoft ending promptをinjection
-- `main.py` `_after_reply()` にoff追加（beat_ptr進行の条件）
-- `main.py` `_use_beat_suppression` の3箇所全てに `or _is_off()` を追加（beat未完了時のエンディング早出し抑止）
-- `main.py` session開始・load・バッチ処理の3箇所でoffも `beat_mod.build_queue(plot)` を実行するよう変更
-- `main.py` PLOT_MODE_LABELS の選択肢1を「プロット参照・誘導（プロットに沿うよう誘導するが逸脱自由）」に変更
-- `main.py` `ask_plot_mode()` の表示テキストも同様に更新
-- `prompt.py` PLOT_MODE_RULES["off"] の先頭に「プロットの流れをGMは意識し、合致する場合は積極的に取り入れること」を追加
-- `README.md` / `README_EN.md` の選択肢1説明を更新（「自由」→「誘導」）
-- strongへの影響ゼロ
+- `state.py`：`gm_char_log: []` を初期値に追加
+- `main.py` `_handle_gm_char_and_turning_point()`：コメント生成後に `state.gm_char_log` へ `{"turn": N, "character": "...", "comment": "..."}` をappend
+- `save_session_json()` は `state.get()` をそのままJSONに書くため、追加実装なしで自動記録される
+
+**ログフォーマット**
+```json
+"gm_char_log": [
+  {"turn": 3, "character": "tsukkomi", "comment": "え、そこ調べます？"},
+  {"turn": 7, "character": "tsukkomi", "comment": "また同じことしてる…"}
+]
+```
+
+### 2026年10月（commit 2e96df4）：gm_char_logのturnが常に0になるバグを修正
+
+サンプルログ確認で `gm_char_log` の全エントリが `"turn": 0` になっていることが発覚。
+
+**原因**：`_handle_gm_char_and_turning_point()` 内で `s.get("turn_count", 0)` を参照していたが、`turn_count` は `state.init()` に定義されていないキーのためデフォルト値0が常に返っていた。
+
+**修正**：`s.get("turn_count", 0)` → `sum(1 for m in h if m["role"] == "user")` に変更。引数 `h`（history）のuserメッセージ数から直接ターン数を算出するよう修正。
+
+### 2026年10月（今セッション）：GMキャラ2種追加・選択UIのカーソルキー化・GM:色統一・README更新
+
+**GMキャラクター2種追加**
+- `all_positive`（全肯定）：何をやっても無条件に褒める。「天才！」「完璧な判断！」
+- `easygoing`（のんき）：緊迫感ゼロのマイペース。「まあなんとかなるでしょ。」「ゆっくりいこう。」
+- `api.py` の `GM_CHAR_PROMPTS` / `GM_CHAR_LABELS` に追加
+
+**GMキャラクター選択UIをカーソルキー選択に変更**
+- `readchar`（クロスプラットフォーム対応）を使用
+- ↑↓キーで選択、Enterで決定
+- `readchar`未インストール時は番号入力にフォールバック
+- `requirements.txt` に `readchar` を追加
+- `main.py` の `GM_CHARACTER_LABELS` dict を `GM_CHARACTER_OPTIONS` リストに変更
+- `_select_with_cursor()` 関数を追加、`ask_gm_character()` を書き換え
+
+**GM:プレフィックスの色統一**
+- `display.py` `gm_char_print()`：`GM:` を通常GMと同じ青（BLUE）に、コメント本文はシアン（CYAN）のまま
+- 変更前：`CYAN + "GM: {text}"` → 変更後：`BLUE + "GM:" + RESET + " " + CYAN + text`
+
+**README.md / README_EN.md 更新**
+- 動作環境に「対応OS：Windows / macOS / Linux」を追記
+- `pip install -r requirements.txt` の行に `readchar` の記載を追加
+- GMキャラクター選択表に全肯定・のんきを追加
+- コンソール表示の説明を `GM:` 青・本文シアンに更新
+- GMキャラクター選択が↑↓キー選択になった旨を追記
+
+### 2026年10月（今セッション）：「全肯定」→「お調子者」に変更
+
+褒め一辺倒の「全肯定」より、ノリよく盛り上がる「お調子者」の方がバリエーションが出ると判断。
+
+- `api.py`：キー `all_positive` → `cheerful` に変更、プロンプトをノリよく乗っかるスタイルに変更
+- `main.py`：`GM_CHARACTER_OPTIONS` の該当エントリを `("cheerful", "お調子者（ノリよく一緒に盛り上がる）")` に変更
+- `README.md`：GMキャラクター表の「全肯定」→「お調子者」に更新
+- `README_EN.md`：「All-Positive」→「Hype Man」に更新
+
+### 2026年10月（今セッション）：GMキャラクターをシニカル固定・あり/なし選択に変更
+
+シニカル5本バッチ検証でバリエーションが十分と確認。tsukkomi/worrier等は語尾・表現のパターン固着が問題で、プロンプトでは解消困難と判断。GMキャラクターをシニカル1種に固定し、選択肢をあり/なしのみに簡略化。
+
+- `api.py`：`GM_CHAR_PROMPTS` / `GM_CHAR_LABELS` をシニカルのみに縮小（tsukkomi/worrier/cheerful/easygoing削除）
+- `main.py`：`GM_CHARACTER_OPTIONS` リストと `_select_with_cursor()` 関数を削除。`ask_gm_character()` を1/2の番号入力（あり=cynical/なし=none）に変更
+- `requirements.txt`：`readchar` を削除
+- `README.md` / `README_EN.md`：GMキャラクター説明をシニカルあり/なしに縮小・更新
+
+### 2026年10月（commit 76b960d）：転換点ターンのGM描写を明るい黄色で表示（実装漏れ修正）
+
+`gm_turning_point_print()`はdisplay.pyに実装・明るい黄色で定義済みだったが、`main.py`でインポートも呼び出しもされていなかった（実装漏れ）。
+
+- `main.py`：`gm_turning_point_print` をインポートに追加
+- `main.py` `call_gm()`：`turning_point_injected` フラグがTrueのターンは `gm_turning_point_print()`（明るい黄色）で表示、それ以外は従来通り `gm_print()`（白）で表示
+
+### 2026年10月（今セッション）：v1.1.0正式リリース・β版表記削除
+
+- `README.md`：タイトルを `v1.1.0（β版）` → `v1.1.0` に変更、β版警告ブロック（⚠️）を削除
+- `README_EN.md`：タイトルを `v1.1.0 (beta)` → `v1.1.0` に変更、beta警告ブロックを削除
+- v1.1.0タグをGitHubにリリース済み（リリースノートはWebページから手動編集）
+- 転換点ターンのGM描写を明るい黄色で表示する実装漏れを修正（commit 76b960d）
+
+### 2026年10月（commit 2590d74）：check_turning_point 転換点判定の閾値を引き上げ
+
+improv/adaptive（再生成前）モードでLLM判定による転換点が多発していた問題（28ターン中8回・約28%）への対処。
+
+**原因**：判定プロンプトが「大きな転換点か？」という緩い基準で、NPC接触・感情変化等が広くyesになっていた。
+
+**修正**（`api.py` `check_turning_point()`のプロンプト変更）：
+- 「物語全体を通じて最も重要な瞬間の一つ」という基準に引き上げ
+- yes条件を3つに限定：①登場人物の関係が不可逆に変化する、②隠された事実・真実が明らかになる、③物語の方向性を決定的に変える選択・衝突
+- 探索・移動・会話・情報収集・日常的な行動は明示的にno
+- クールダウン等の機械的制御は採用しない（大事な転換点を見逃すリスクがあるため）
+
+**副作用**：閾値を上げすぎて今度は「一度も発動しない」問題が発生（犯罪ジャンル28ターン・gm_char_log空）。
+- ジャンルによって転換点の出やすさが大きく異なる（捜査・情報収集系は地味なターンが多く、3条件をほぼ満たさない）
+- 渡すGM描写の文字数が150字では文脈が薄すぎてLLMが判断できていた
+
+### 2026年10月（commit 9d0ef58）：check_turning_point 参照文字数を拡大
+
+- `api.py` の `gm_msgs` の切り出し文字数を `[:150]` → `[:300]` に変更
+- 条件（3条件限定）は現状維持
+
+### 2026年10月（commit 29f55a2）：転換点injection処理リファクタリング・全モードで発火するよう修正
+
+**バグ**：GMキャラコメント（一言）は表示されるのにGM本文が明るい黄色にならない。
+
+**原因**：`_build_api_messages()`にstrong/off/adaptive等のモード別ブロックがあり、それぞれで`return msgs`を途中実行していた。転換点injection処理は関数末尾（25ターン以下・通常パス）にしか存在せず、strong・off・adaptive(再生成後)・25ターン超では一度も転換点injectionに到達しなかった。
+
+**修正**：
+- `_apply_turning_point_injection(msgs)`ヘルパー関数を新設（従来の末尾処理を抽出）
+- `_build_api_messages()`内の全`return msgs`（5箇所）を`return _apply_turning_point_injection(msgs)`に変更
+- これにより全モード・全ターン条件で転換点injectionが確実に発火する
+
+### 2026年10月（今セッション）：英語化構想（未実装）
+
+**方針**
+- GMシステムプロンプトは日本語のまま維持（再調整コスト・検証コストが高いため）
+- GMの出力のみ英語化する最小変更アプローチ
+- プロンプトに「出力は英語で」を追加する方向で検討中
+- UIも言語選択対応にする（起動時に日本語/英語を選択）
+- 二重管理を避けるためzipを分けずメニューで切り替える設計
+- redditへの投稿を視野に入れている（r/LocalLLaMA想定）
+
+**現時点の確認事項**
+- 英語で行動を入力してもGMは日本語で返すことを確認済み
+- 「出力は英語で」の一行追加で英語出力になる可能性が高い（未検証）
+- **実装はユーザー確認後に着手すること**

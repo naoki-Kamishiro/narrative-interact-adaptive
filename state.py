@@ -22,6 +22,11 @@ def init(genre: str, title: str, plot: dict, plot_mode: str = "off") -> None:
         "deviation_count": 0,
         "peak_deviation_count": 0,
         "adaptive_replotted": False,
+        "gm_character": "none",
+        "turning_point_triggered": False,
+        "turning_point_injected": False,
+        "beat_just_advanced": False,
+        "gm_char_log": [],
     }
 
 def get() -> dict:

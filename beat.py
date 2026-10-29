@@ -126,7 +126,7 @@ def build_queue(plot: dict) -> list:
 
 def make_injection(beat: dict) -> str:
     """ビートから注入文を生成する。"""
-    # adaptiveモードの再生成ビートはinjectionフィールドを直接持つ
+    # adaptive beat は独自の injection 文を持つ
     if "injection" in beat:
         return beat["injection"]
     t = beat["type"]
@@ -170,7 +170,7 @@ def inject(messages: list, queue: list, ptr: int) -> tuple[list, str | None]:
             msgs[i]["content"] = msgs[i]["content"] + f"\n（GMへの場面指示: {injection}）"
             break
 
-    beat_type = beat.get("type", "injection")
+    beat_type = beat.get("type", "adaptive")
     debug = f"[BEAT] ptr={ptr} type={beat_type} timing={beat.get('timing', '-')}"
     return msgs, debug
 
