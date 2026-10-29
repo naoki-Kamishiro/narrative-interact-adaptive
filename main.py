@@ -129,7 +129,8 @@ def ask(prompt: str) -> str:
     try:
         return input(prompt).strip()
     except EOFError:
-        print("\n終了します。")
+        lang = LANGUAGE if not AUTO_PLAY_MODE else BATCH_LANGUAGE
+        print("\nQuitting." if lang == "en" else "\n終了します。")
         sys.exit(0)
     except KeyboardInterrupt:
         print()
@@ -141,8 +142,9 @@ def call_gm(messages: list, max_retries: int = 1) -> str:
     if reply == "[CONTEXT_LIMIT]":
         return "[CONTEXT_LIMIT]"
     attempt = 0
+    _call_lang = LANGUAGE if not AUTO_PLAY_MODE else BATCH_LANGUAGE
     while (reply.startswith("[ERROR") or not reply.strip()) and attempt < max_retries:
-        system_print("応答生成に失敗したため再試行します...")
+        system_print("Retrying response generation..." if _call_lang == "en" else "応答生成に失敗したため再試行します...")
         reply = chat(messages)
         if reply == "[CONTEXT_LIMIT]":
             return "[CONTEXT_LIMIT]"
@@ -809,7 +811,7 @@ def start_new_game() -> tuple[list, str, str]:
         gm_character = ask_gm_character()
 
     if plot_mode == "improv":
-        system_print("プロット生成なし")
+        system_print("No plot generation (improv mode)" if LANGUAGE == "en" else "プロット生成なし")
         plot = {}
     else:
         plot = plot_mod.generate(genre, title)
@@ -888,7 +890,7 @@ def _print_history(h: list) -> None:
 def resume_game() -> tuple[list, str, str] | None:
     s, h = save_mod.load()
     if not s or not h:
-        system_print("セーブデータが見つかりません。")
+        system_print("No save data found." if LANGUAGE == "en" else "セーブデータが見つかりません。")
         return None
     state.load_from(s)
     plot = s.get("plot", {})
