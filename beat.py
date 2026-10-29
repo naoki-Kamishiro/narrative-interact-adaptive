@@ -124,13 +124,24 @@ def build_queue(plot: dict) -> list:
     return queue
 
 
-def make_injection(beat: dict) -> str:
+# 注入文テンプレート（英語版）
+_TEMPLATES_EN = {
+    "misconception": "In this turn, cause the following event to occur at the current location: {content}. Depict it as an externally observable event, not an internal change. NPCs may state the fact in dialogue, but neither NPCs nor narration should say what it means to the protagonist.",
+    "failure":       "In this turn, cause the following situation to arise at the current location: {content}. Trigger it as a world-side event, independent of the player's action.",
+    "choice":        "In this turn, depict the protagonist facing this dilemma: {content}. Force a choice. The cost: {cost}.",
+    "twist":         "In this turn, cause the following event to occur as a world-side happening: {content}. Trigger it even if the player has not taken a related action. NPCs may state the fact in dialogue, but neither NPCs nor narration should say what it means to the protagonist.",
+    "character":     "{name} appears at the protagonist's location and makes contact with the player.",
+}
+
+
+def make_injection(beat: dict, language: str = "ja") -> str:
     """ビートから注入文を生成する。"""
     # adaptive beat は独自の injection 文を持つ
     if "injection" in beat:
         return beat["injection"]
     t = beat["type"]
-    tmpl = _TEMPLATES.get(t, "")
+    templates = _TEMPLATES_EN if language == "en" else _TEMPLATES
+    tmpl = templates.get(t, "")
     if t == "character":
         return tmpl.format(name=beat.get("name", ""))
     elif t == "choice":
@@ -149,7 +160,7 @@ def get_current_beat(queue: list, ptr: int) -> dict | None:
     return None
 
 
-def inject(messages: list, queue: list, ptr: int) -> tuple[list, str | None]:
+def inject(messages: list, queue: list, ptr: int, language: str = "ja") -> tuple[list, str | None]:
     """
     API送信用メッセージリストの最後のuserメッセージに注入文を付加する。
     戻り値: (注入後メッセージリスト, 注入したビートのデバッグ情報 or None)
@@ -158,7 +169,7 @@ def inject(messages: list, queue: list, ptr: int) -> tuple[list, str | None]:
     if beat is None:
         return messages, None
 
-    injection = make_injection(beat)
+    injection = make_injection(beat, language=language)
     if not injection:
         return messages, None
 
@@ -167,7 +178,10 @@ def inject(messages: list, queue: list, ptr: int) -> tuple[list, str | None]:
     for i in reversed(range(len(msgs))):
         if msgs[i]["role"] == "user":
             msgs[i] = dict(msgs[i])
-            msgs[i]["content"] = msgs[i]["content"] + f"\n（GMへの場面指示: {injection}）"
+            if language == "en":
+                msgs[i]["content"] = msgs[i]["content"] + f"\n(Scene instruction for GM: {injection})"
+            else:
+                msgs[i]["content"] = msgs[i]["content"] + f"\n（GMへの場面指示: {injection}）"
             break
 
     beat_type = beat.get("type", "adaptive")
@@ -192,10 +206,10 @@ def detect_character(response: str, name: str) -> bool:
     return False
 
 
-def advance(queue: list, ptr: int, response: str) -> tuple[list, int]:
+def advance(queue: list, ptr: int, response: str, language: str = "ja") -> tuple[list, int]:
     """
     現在ビートが描写されたか確認し、ポインタを進める。
-    characterビートは名前照合で確認。それ以外は1回注入で信頼して進める。
+    characterビートは名前照合で確認（ENモードはtrust-advance）。それ以外は1回注入で信頼して進める。
     戻り値: (更新後queue, 新ptr)
 
     注意: get_current_beat() はdone済みをスキップして最初のundoneビートを返す。
@@ -214,6 +228,12 @@ def advance(queue: list, ptr: int, response: str) -> tuple[list, int]:
 
     if beat.get("type") == "character":
         name = beat.get("name", "")
+        # ENモードはGMが英語で出力するため日本語名の照合が機能しない。
+        # 1回注入で信頼して進める（trust-advance）。
+        if language == "en":
+            _debug(f"[BEAT] EN mode: trust-advance character beat '{name}'")
+            queue[actual_idx]["done"] = True
+            return queue, actual_idx + 1
         if detect_character(response, name):
             queue[actual_idx]["done"] = True
             return queue, actual_idx + 1

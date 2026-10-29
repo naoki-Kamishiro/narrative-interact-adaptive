@@ -10,7 +10,7 @@ import state
 import history as hist
 import plot as plot_mod
 import save as save_mod
-from api import chat, chat_player, generate_genre_title, check_deviation, regenerate_plot, extract_protagonist_name, check_turning_point, generate_gm_char_comment, GM_CHAR_LABELS
+from api import chat, chat_player, generate_genre_title, check_deviation, regenerate_plot, extract_protagonist_name, check_turning_point, generate_gm_char_comment, GM_CHAR_LABELS, GM_CHAR_LABELS_EN
 import random
 from display import gm_print, gm_turning_point_print, system_print, error_print, hr, gm_char_print, set_display_language
 from prompt import build_start_message, build_adaptive_replot_system_prompt
@@ -117,6 +117,38 @@ PLAYER_SYSTEM_DEVIATE = (
     "端的に行動を描写する事。\n"
     "行動をいくつも一度にしない事。\n"
     "エンディングと表示されたら終了してください。"
+)
+
+PLAYER_SYSTEM_NORMAL_EN = (
+    "You are the player in a Narrative Interact system.\n"
+    "Based on the GM's text, output your action on a single line with no line breaks.\n"
+    "Act as the protagonist and respond flexibly to the situation.\n"
+    "Output only raw text — no quotes, no dialogue, only actions.\n"
+    "Do not include emotions or inner thoughts in your action.\n"
+    "Do not add unnecessary embellishments.\n"
+    "Describe your action concisely.\n"
+    "Do not perform multiple actions at once.\n"
+    "Do not repeat the same target-action combination as the immediately preceding turn.\n"
+    "If you perform actions on the same target with different verbs three times in a row, switch to a different target or location.\n"
+    "If the same type of action at the same location repeats three times, move to a different location.\n"
+    "If an action on the same target fails twice in a row, stop and switch to a different target or location.\n"
+    "Do not fixate on a failed goal or location; prioritize action toward a different goal or location.\n"
+    "Do not output unobservable inner actions such as 'steeling myself' or 'accepting the situation'. Output only externally visible actions — body, speech, or movement.\n"
+    "Do not introduce items, tools, or abilities that do not exist in the story's world.\n"
+    "When [Ending] is shown, stop."
+)
+
+PLAYER_SYSTEM_DEVIATE_EN = (
+    "You are the player in a Narrative Interact system.\n"
+    "Based on the GM's text, output your action on a single line with no line breaks.\n"
+    "As the protagonist, deliberately ignore or act contrary to the developments, guidance, and hooks presented by the GM.\n"
+    "Output only raw text — no quotes, no dialogue, only actions.\n"
+    "Do not include emotions or inner thoughts in your action.\n"
+    "Do not add unnecessary embellishments.\n"
+    "Describe your action concisely.\n"
+    "Do not perform multiple actions at once.\n"
+    "If you perform actions on the same target with different verbs three times in a row, switch to a different target or location.\n"
+    "When [Ending] is shown, stop."
 )
 
 def show_help():
@@ -521,7 +553,7 @@ def _after_reply(reply: str) -> None:
         queue = s.get("beat_queue", [])
         ptr = s.get("beat_ptr", 0)
         old_ptr = ptr
-        queue, ptr = beat_mod.advance(queue, ptr, reply)
+        queue, ptr = beat_mod.advance(queue, ptr, reply, language=s.get("language", "ja"))
         advanced = ptr > old_ptr
         state.update({"beat_queue": queue, "beat_ptr": ptr, "beat_just_advanced": advanced})
     else:
@@ -769,7 +801,8 @@ def _handle_gm_char_and_turning_point(action: str, h: list) -> None:
         if comment:
             gm_char_print(comment)
             if DEBUG_MODE:
-                label = GM_CHAR_LABELS.get(gm_character, gm_character)
+                _char_labels = GM_CHAR_LABELS_EN if s.get("language", "ja") == "en" else GM_CHAR_LABELS
+                label = _char_labels.get(gm_character, gm_character)
                 print(f"[GM_CHAR] {label}: {comment}", file=sys.stderr)
             # コメントをstateに蓄積（JSONログに残す）
             s = state.get()
@@ -816,7 +849,7 @@ def start_new_game() -> tuple[list, str, str]:
         system_print("No plot generation (improv mode)" if LANGUAGE == "en" else "プロット生成なし")
         plot = {}
     else:
-        plot = plot_mod.generate(genre, title)
+        plot = plot_mod.generate(genre, title, language=LANGUAGE)
 
     state.init(genre, title, plot, plot_mode)
     state.update({"use_dice": use_dice, "difficulty_preset": difficulty_preset,
@@ -1067,7 +1100,7 @@ def run_single_session(plot_mode: str) -> None:
             system_print("プロット生成なし")
         plot = {}
     else:
-        plot = plot_mod.generate(genre, title)
+        plot = plot_mod.generate(genre, title, language=BATCH_LANGUAGE)
 
     state.init(genre, title, plot, plot_mode)
     state.update({"use_dice": BATCH_USE_DICE, "difficulty_preset": difficulty_preset,
@@ -1131,16 +1164,22 @@ def run_single_session(plot_mode: str) -> None:
                 _action_label = "Your action" if BATCH_LANGUAGE == "en" else "あなたの行動"
                 print(f"\n{_action_label}: {action} {_forced_label}")
             else:
-                sys_prompt = PLAYER_SYSTEM_NORMAL if AUTO_PLAY_MODE == "normal" else PLAYER_SYSTEM_DEVIATE
+                if BATCH_LANGUAGE == "en":
+                    sys_prompt = PLAYER_SYSTEM_NORMAL_EN if AUTO_PLAY_MODE == "normal" else PLAYER_SYSTEM_DEVIATE_EN
+                else:
+                    sys_prompt = PLAYER_SYSTEM_NORMAL if AUTO_PLAY_MODE == "normal" else PLAYER_SYSTEM_DEVIATE
                 _plot = state.get().get("plot", {})
                 _protagonist = _plot.get("protagonist", {}) if _plot else {}
                 _pname = _protagonist.get("name", "") if _protagonist else ""
                 if _pname:
-                    sys_prompt = f"あなたが操作する主人公の名前は「{_pname}」です。他のキャラクターを操作しないこと。\n" + sys_prompt
+                    if BATCH_LANGUAGE == "en":
+                        sys_prompt = f"You control the protagonist named '{_pname}'. Do not control other characters.\n" + sys_prompt
+                    else:
+                        sys_prompt = f"あなたが操作する主人公の名前は「{_pname}」です。他のキャラクターを操作しないこと。\n" + sys_prompt
                 recent_actions = _get_recent_player_actions(h, n=5)
                 # DEVIATEモードでは「繰り返し禁止の参考」を渡さない（行動抑制を避けるため）
                 _ra = None if AUTO_PLAY_MODE == "deviate" else recent_actions
-                action = chat_player(last_gm_reply, sys_prompt, _ra)
+                action = chat_player(last_gm_reply, sys_prompt, _ra, language=BATCH_LANGUAGE)
                 if action.startswith("[ERROR"):
                     error_print(f"Player LLM error: {action}" if BATCH_LANGUAGE == "en" else f"プレイヤーLLMエラー: {action}")
                     state.update({"end_reason": "player_error"})
@@ -1386,17 +1425,24 @@ def main():
                     _act_lbl = "Your action" if _lang_auto == "en" else "あなたの行動"
                     print(f"\n{_act_lbl}: {action}{_forced_sfx}")
                 else:
-                    sys_prompt = PLAYER_SYSTEM_NORMAL if AUTO_PLAY_MODE == "normal" else PLAYER_SYSTEM_DEVIATE
+                    _lang_auto = state.get().get("language", "ja")
+                    if _lang_auto == "en":
+                        sys_prompt = PLAYER_SYSTEM_NORMAL_EN if AUTO_PLAY_MODE == "normal" else PLAYER_SYSTEM_DEVIATE_EN
+                    else:
+                        sys_prompt = PLAYER_SYSTEM_NORMAL if AUTO_PLAY_MODE == "normal" else PLAYER_SYSTEM_DEVIATE
                     # 主人公名をsys_promptに付加（キャラ誤操作防止）
                     _plot = state.get().get("plot", {})
                     _protagonist = _plot.get("protagonist", {}) if _plot else {}
                     _pname = _protagonist.get("name", "") if _protagonist else ""
                     if _pname:
-                        sys_prompt = f"あなたが操作する主人公の名前は「{_pname}」です。他のキャラクターを操作しないこと。\n" + sys_prompt
+                        if _lang_auto == "en":
+                            sys_prompt = f"You control the protagonist named '{_pname}'. Do not control other characters.\n" + sys_prompt
+                        else:
+                            sys_prompt = f"あなたが操作する主人公の名前は「{_pname}」です。他のキャラクターを操作しないこと。\n" + sys_prompt
                     recent_actions = _get_recent_player_actions(h, n=5)
                     # DEVIATEモードでは「繰り返し禁止の参考」を渡さない（行動抑制を避けるため）
                     _ra = None if AUTO_PLAY_MODE == "deviate" else recent_actions
-                    action = chat_player(last_gm_reply, sys_prompt, _ra)
+                    action = chat_player(last_gm_reply, sys_prompt, _ra, language=_lang_auto)
                     if action.startswith("[ERROR"):
                         error_print(f"Player LLM error: {action}" if _lang == "en" else f"プレイヤーLLMエラー: {action}")
                         state.update({"end_reason": "player_error"})

@@ -15,28 +15,43 @@ DEBUG_MODE: bool = False
 
 MAX_RETRIES = 3
 
-def generate(genre: str, title: str) -> dict:
-    system_print("プロットを生成中...")
+def generate(genre: str, title: str, language: str = "ja") -> dict:
+    if language == "en":
+        system_print("Generating plot...")
+    else:
+        system_print("プロットを生成中...")
     messages = [
         {"role": "system", "content": SYSTEM_PLOT},
         {"role": "user",   "content": build_plot_message(genre, title)},
     ]
     for attempt in range(1, MAX_RETRIES + 1):
         raw = chat_json(messages)
-        result = _parse(raw)
+        result = _parse(raw, language=language)
         if result and all(result.get(k) for k in ("ending", "protagonist", "characters", "climax")):
-            system_print("プロット生成完了")
-            _warn_missing_keys(result)
+            if language == "en":
+                system_print("Plot generation complete")
+            else:
+                system_print("プロット生成完了")
+            _warn_missing_keys(result, language=language)
             return result
         if attempt < MAX_RETRIES:
             missing = [k for k in ("ending", "protagonist", "characters", "climax") if not result.get(k)] if result else ["parse"]
-            system_print(f"再試行中... ({attempt}/{MAX_RETRIES}) 不足: {', '.join(missing)}")
-    system_print("プロット生成に失敗しました。プロットなしで続行します。")
+            if language == "en":
+                system_print(f"Retrying... ({attempt}/{MAX_RETRIES}) Missing: {', '.join(missing)}")
+            else:
+                system_print(f"再試行中... ({attempt}/{MAX_RETRIES}) 不足: {', '.join(missing)}")
+    if language == "en":
+        system_print("Plot generation failed. Continuing without plot.")
+    else:
+        system_print("プロット生成に失敗しました。プロットなしで続行します。")
     return {}
 
-def _parse(raw: str) -> dict:
+def _parse(raw: str, language: str = "ja") -> dict:
     if raw.startswith("[ERROR"):
-        system_print("プロット生成中にエラーが発生しました")
+        if language == "en":
+            system_print("An error occurred during plot generation")
+        else:
+            system_print("プロット生成中にエラーが発生しました")
         return {}
 
     cleaned = re.sub(r"```[a-z]*\n?", "", raw).strip()
@@ -60,7 +75,10 @@ def _parse(raw: str) -> dict:
     except Exception:
         pass
 
-    system_print("プロットのJSON解析に失敗しました")
+    if language == "en":
+        system_print("Failed to parse plot JSON")
+    else:
+        system_print("プロットのJSON解析に失敗しました")
     return {}
 
 
@@ -69,12 +87,15 @@ _NESTED_KEYS = ("misconceptions", "failures", "twists", "conflicts", "climax", "
 
 _REQUIRED_KEYS = ("ending", "protagonist", "characters", "climax")
 
-def _warn_missing_keys(plot: dict) -> None:
+def _warn_missing_keys(plot: dict, language: str = "ja") -> None:
     """必須キーが空または欠落していた場合に警告を出す。"""
     for key in _REQUIRED_KEYS:
         val = plot.get(key)
         if not val:
-            system_print(f"[警告] プロットの必須キー「{key}」が空です。物語の進行に影響する可能性があります。")
+            if language == "en":
+                system_print(f"[Warning] Required plot key '{key}' is empty. Story progression may be affected.")
+            else:
+                system_print(f"[警告] プロットの必須キー「{key}」が空です。物語の進行に影響する可能性があります。")
 
 
 def _validate_and_repair(plot: dict) -> dict:
