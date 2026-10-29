@@ -817,3 +817,44 @@ GMは `全ての出力は英語で書くこと。` 指示により日本語マ�
 - `ask_language()` 自体は日本語で書かれており、英語しかわからないユーザーには選択肢の意味が不明
 - 起動時の言語選択UIのみ日英併記にする（例：`1. 日本語 / Japanese`・`2. English`）
 - それ以降のメニューは選択した言語で表示されるため、起動画面だけが対象
+
+プロット生成メッセージ・GMキャララベル・バッチプレイヤー行動の英語化：
+
+**A-1：plot.py**
+- `generate()` に `language: str = "ja"` 引数追加
+- 以下7箇所の `system_print` を言語切り替え対応：
+  - `"プロットを生成中..."` → `"Generating plot..."`
+  - `"プロット生成完了"` → `"Plot generated."`
+  - `"再試行中... ({attempt}/{MAX_RETRIES}) 不足: {', '.join(missing)}"` → `"Retrying... ({attempt}/{MAX_RETRIES}) missing: {', '.join(missing)}"`
+  - `"プロット生成に失敗しました。プロットなしで続行します。"` → `"Plot generation failed. Continuing without plot."`
+  - `"プロット生成中にエラーが発生しました"` → `"Error during plot generation"`
+  - `"プロットのJSON解析に失敗しました"` → `"Failed to parse plot JSON"`
+  - `"[警告] プロットの必須キー「{key}」が空です..."` → `"[Warning] Required plot key '{key}' is empty..."`
+
+**A-2：main.py 819行目**
+- `plot_mod.generate(genre, title)` → `plot_mod.generate(genre, title, language=LANGUAGE)`
+
+**A-3：main.py 1070行目**
+- `plot_mod.generate(genre, title)` → `plot_mod.generate(genre, title, language=BATCH_LANGUAGE)`
+
+**B-1：main.py 772行目**
+- `label = GM_CHAR_LABELS.get(gm_character, gm_character)`
+- → `_char_labels = GM_CHAR_LABELS_EN if s.get("language","ja") == "en" else GM_CHAR_LABELS`
+- → `label = _char_labels.get(gm_character, gm_character)`
+- `GM_CHAR_LABELS_EN` を api.py からのインポートに追加（main.py 13行目）
+
+**B-2：beat.py advance()**
+- `advance()` に `language: str = "ja"` 引数追加
+- character beatの名前マッチ箇所に `language == "en"` 時はtrust-advance（名前検出をスキップしてdone扱い）する条件を追加
+- `beat.advance()` 呼び出し元（main.py）にも `language=` を渡す
+
+**C-1：main.py**
+- `PLAYER_SYSTEM_NORMAL_EN` / `PLAYER_SYSTEM_DEVIATE_EN` を追加（既存の日本語版を英訳したもの）
+
+**C-2：api.py chat_player()**
+- `language: str = "ja"` 引数追加
+- `recent_actions` のラベル文字列（`【直近の自分の行動...】` / `【現在の状況】`）を言語切り替え
+
+**C-3：main.py 1134/1389行目**
+- `sys_prompt` 選択を言語（`LANGUAGE` / `BATCH_LANGUAGE`）で切り替え
+- `chat_player()` 呼び出し（1143/1399行目）に `language=` を渡す
