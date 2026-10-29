@@ -12,7 +12,7 @@ import plot as plot_mod
 import save as save_mod
 from api import chat, chat_player, generate_genre_title, check_deviation, regenerate_plot, extract_protagonist_name, check_turning_point, generate_gm_char_comment, GM_CHAR_LABELS
 import random
-from display import gm_print, gm_turning_point_print, system_print, error_print, hr, gm_char_print
+from display import gm_print, gm_turning_point_print, system_print, error_print, hr, gm_char_print, set_display_language
 from prompt import build_start_message, build_adaptive_replot_system_prompt
 import dice as dice_mod
 import beat as beat_mod
@@ -722,12 +722,14 @@ def ask_language() -> str:
             PLOT_MODE_LABELS = PLOT_MODE_LABELS_JA
             DIFFICULTY_LABELS = DIFFICULTY_LABELS_JA
             EPILOGUE_PROMPT = EPILOGUE_PROMPT_JA
+            set_display_language("ja")
             return "ja"
         elif choice == "2":
             COMMANDS = COMMANDS_EN
             PLOT_MODE_LABELS = PLOT_MODE_LABELS_EN
             DIFFICULTY_LABELS = DIFFICULTY_LABELS_EN
             EPILOGUE_PROMPT = EPILOGUE_PROMPT_EN
+            set_display_language("en")
             return "en"
         print("Please enter 1 or 2 / 1か2を入力してください。")
 
