@@ -861,7 +861,7 @@ def start_new_game() -> tuple[list, str, str]:
                     print(f"あなたは{protagonist['name']}として、この物語を紡ぎます。")
                 print()
     if reply.startswith("[ERROR"):
-        error_print("応答生成に失敗しました。/retryで再試行できます。")
+        error_print("Failed to generate response. You can /retry." if LANGUAGE == "en" else "応答生成に失敗しました。/retryで再試行できます。")
         # 自動プレイ時: エラー文字列がプレイヤーLLMに渡らないよう空文字にする
         initial_reply_for_player = ""
     else:
@@ -1035,11 +1035,17 @@ def run_single_session(plot_mode: str) -> None:
     genre = _pick_batch_genre()
     result = generate_genre_title(genre)
     if "error" in result:
-        error_print(f"タイトル生成に失敗しました: {result['error']}")
+        if BATCH_LANGUAGE == "en":
+            error_print(f"Title generation failed: {result['error']}")
+        else:
+            error_print(f"タイトル生成に失敗しました: {result['error']}")
         return
     title = result.get("title", "").strip()
     if not title:
-        error_print(f"タイトルが空です: {result}")
+        if BATCH_LANGUAGE == "en":
+            error_print(f"Title is empty: {result}")
+        else:
+            error_print(f"タイトルが空です: {result}")
         return
 
     if BATCH_LANGUAGE == "en":
@@ -1092,7 +1098,7 @@ def run_single_session(plot_mode: str) -> None:
 
     reply = call_gm(_build_api_messages(h))
     if reply == "[CONTEXT_LIMIT]" or reply.startswith("[ERROR"):
-        error_print("初回応答生成に失敗しました。このセッションをスキップします。")
+        error_print("Failed to generate opening. Skipping session." if BATCH_LANGUAGE == "en" else "初回応答生成に失敗しました。このセッションをスキップします。")
         return
     h = hist.add_assistant(h, reply)
     _after_reply(reply)
@@ -1131,7 +1137,7 @@ def run_single_session(plot_mode: str) -> None:
                 _ra = None if AUTO_PLAY_MODE == "deviate" else recent_actions
                 action = chat_player(last_gm_reply, sys_prompt, _ra)
                 if action.startswith("[ERROR"):
-                    error_print(f"プレイヤーLLMエラー: {action}")
+                    error_print(f"Player LLM error: {action}" if BATCH_LANGUAGE == "en" else f"プレイヤーLLMエラー: {action}")
                     state.update({"end_reason": "player_error"})
                     save_session_json(h, title)
                     break
@@ -1143,7 +1149,7 @@ def run_single_session(plot_mode: str) -> None:
         is_forced_ending = action.startswith("（物語を終わらせてください）")
         dice_result = dice_mod.judge(action, h) if (state.get().get("use_dice", True) and not is_forced_ending) else None
         if dice_result and dice_result.get("error"):
-            error_print("ダイス判定に失敗しました。判定なしで続行します。")
+            error_print("Dice roll failed. Continuing without roll." if BATCH_LANGUAGE == "en" else "ダイス判定に失敗しました。判定なしで続行します。")
             dice_result = None
         elif dice_result:
             dice_mod.display_result(dice_result)
@@ -1383,7 +1389,7 @@ def main():
                     _ra = None if AUTO_PLAY_MODE == "deviate" else recent_actions
                     action = chat_player(last_gm_reply, sys_prompt, _ra)
                     if action.startswith("[ERROR"):
-                        error_print(f"プレイヤーLLMエラー: {action}")
+                        error_print(f"Player LLM error: {action}" if _lang == "en" else f"プレイヤーLLMエラー: {action}")
                         state.update({"end_reason": "player_error"})
                         save_session_json(h, title)
                         break
