@@ -303,18 +303,32 @@ GM_CHAR_PROMPTS = {
     ),
 }
 
+GM_CHAR_PROMPTS_EN = {
+    "cynical": (
+        "You are a GM of a text RPG with a cynical personality.\n"
+        "Make a brief sarcastic comment specifically about the player's action.\n"
+        "One short line only, under 15 words. Minimal punctuation and no line breaks."
+    ),
+}
+
 GM_CHAR_LABELS = {
     "cynical": "シニカル",
 }
 
+GM_CHAR_LABELS_EN = {
+    "cynical": "Cynical",
+}
 
-def generate_gm_char_comment(action: str, recent_history: list[dict], character: str, gm_char_log: list[dict] | None = None) -> str:
+
+def generate_gm_char_comment(action: str, recent_history: list[dict], character: str, gm_char_log: list[dict] | None = None, language: str = "ja") -> str:
     """GMキャラクターの一言コメントを生成する。
-    character: "tsukkomi" / "cynical" / "worrier"
+    character: "cynical"
     gm_char_log: これまでの全コメント履歴（繰り返し抑止用）
+    language: "ja" or "en"
     エラー時は空文字を返す。
     """
-    sys_prompt = GM_CHAR_PROMPTS.get(character)
+    prompts = GM_CHAR_PROMPTS_EN if language == "en" else GM_CHAR_PROMPTS
+    sys_prompt = prompts.get(character)
     if not sys_prompt:
         return ""
     # 直近3ターンのGM描写を参考として渡す
@@ -325,8 +339,14 @@ def generate_gm_char_comment(action: str, recent_history: list[dict], character:
     if gm_char_log:
         comments = [entry["comment"] for entry in gm_char_log if "comment" in entry]
         if comments:
-            past_comments = "【これまでに使ったコメント（語尾・語法のパターンを読み取り、同じパターンを繰り返さないこと）】\n" + "\n".join(f"- {c}" for c in comments) + "\n\n"
-    user_content = f"{past_comments}直近の状況:\n{context}\n\nプレイヤーの行動: {action}" if context else f"{past_comments}プレイヤーの行動: {action}"
+            if language == "en":
+                past_comments = "[Previous comments — read the patterns and avoid repeating the same style or phrasing]\n" + "\n".join(f"- {c}" for c in comments) + "\n\n"
+            else:
+                past_comments = "【これまでに使ったコメント（語尾・語法のパターンを読み取り、同じパターンを繰り返さないこと）】\n" + "\n".join(f"- {c}" for c in comments) + "\n\n"
+    if language == "en":
+        user_content = f"{past_comments}Recent situation:\n{context}\n\nPlayer's action: {action}" if context else f"{past_comments}Player's action: {action}"
+    else:
+        user_content = f"{past_comments}直近の状況:\n{context}\n\nプレイヤーの行動: {action}" if context else f"{past_comments}プレイヤーの行動: {action}"
     messages = [
         {"role": "system", "content": sys_prompt},
         {"role": "user", "content": user_content},

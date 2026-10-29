@@ -1,8 +1,8 @@
 from prompt import build_system_prompt
 import beat as beat_mod
 
-def new_history(plot: dict = {}, plot_mode: str = "off", genre: str = "") -> list:
-    return [{"role": "system", "content": build_system_prompt(plot, plot_mode, genre)}]
+def new_history(plot: dict = {}, plot_mode: str = "off", genre: str = "", language: str = "ja") -> list:
+    return [{"role": "system", "content": build_system_prompt(plot, plot_mode, genre, language)}]
 
 def add_user(history: list, content: str) -> list:
     history.append({"role": "user", "content": content})
@@ -39,8 +39,8 @@ def build_for_api_with_beat(history: list, queue: list, ptr: int) -> tuple[list,
     return beat_mod.inject(msgs, queue, ptr)
 
 
-def rebuild_system(history: list, plot: dict, plot_mode: str = "off", genre: str = "") -> list:
+def rebuild_system(history: list, plot: dict, plot_mode: str = "off", genre: str = "", language: str = "ja") -> list:
     """ロード時にシステムプロンプトをプロットで再構築する。"""
-    new_system = {"role": "system", "content": build_system_prompt(plot, plot_mode, genre)}
+    new_system = {"role": "system", "content": build_system_prompt(plot, plot_mode, genre, language)}
     other_msgs = [m for m in history if m["role"] != "system"]
     return [new_system] + other_msgs

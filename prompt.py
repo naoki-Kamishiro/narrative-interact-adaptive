@@ -284,9 +284,10 @@ def build_adaptive_replot_system_prompt(new_plot: dict, genre: str = "") -> str:
     return "\n".join(lines)
 
 
-def build_system_prompt(plot: dict, plot_mode: str = "off", genre: str = "") -> str:
+def build_system_prompt(plot: dict, plot_mode: str = "off", genre: str = "", language: str = "ja") -> str:
     """genre_traitsとplot_modeを反映した動的システムプロンプトを生成する。
     strongモードではビート注入方式を使うため、【反転】【失敗・挫折】【重要選択】【思い込みと真実】節は除外する。
+    language="en" のとき、末尾に英語出力指示を追加する。
     """
     _beat_injection_mode = (plot_mode == "strong")
     traits = plot.get("genre_traits", {})
@@ -487,6 +488,10 @@ def build_system_prompt(plot: dict, plot_mode: str = "off", genre: str = "") -> 
             if ending_note.get("hook_resolution"):
                 lines.append(f"- フック回収: {ending_note['hook_resolution']}（着地点の描写に含めること）")
             # theme_closure は内面・抽象語を含むためGMには渡さない
+
+    if language == "en":
+        lines.append("")
+        lines.append("全ての出力は英語で書くこと。")
 
     return "\n".join(lines)
 

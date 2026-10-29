@@ -17,7 +17,7 @@ from prompt import build_start_message, build_adaptive_replot_system_prompt
 import dice as dice_mod
 import beat as beat_mod
 
-COMMANDS = {
+COMMANDS_JA = {
     "/save": "セーブ",
     "/load": "ロード",
     "/quit": "セーブせずに終了",
@@ -27,10 +27,21 @@ COMMANDS = {
     "/help": "コマンド一覧",
     "/h":    "コマンド一覧",
 }
+COMMANDS_EN = {
+    "/save": "Save",
+    "/load": "Load",
+    "/quit": "Quit without saving",
+    "/hint": "Show 3-4 action suggestions",
+    "/retry": "Regenerate last GM response",
+    "/r":    "Regenerate last GM response",
+    "/help": "Show command list",
+    "/h":    "Show command list",
+}
+COMMANDS = COMMANDS_JA  # will be overwritten after language selection
 
 ENDING_MARKER = "【エンディング】"
 
-EPILOGUE_PROMPT = (
+EPILOGUE_PROMPT_JA = (
     "エピローグを200字程度で書いてください。"
     "（これはエピローグ専用の依頼です。「【エンディング】以降の描写禁止」ルールはエピローグには適用されません。）"
     "本編で生じた代償・損失（負傷・失った力・犠牲等）と主要人物の状態（生死・関係の変化等）のうち、"
@@ -40,6 +51,16 @@ EPILOGUE_PROMPT = (
     "「和解」「解放」「平穏」「救済」「変化」「重圧」「呪縛」「受容」「移ろう」「置き換わる」"
     "など抽象語は使用しないこと。"
 )
+EPILOGUE_PROMPT_EN = (
+    "Please write an epilogue of around 200 characters. "
+    "(This is an epilogue-only request. The rule 'no depiction after 【エンディング】' does not apply here.) "
+    "Pick 1-2 consequences or losses from the main story (injuries, sacrifices, lost powers, etc.) and the states of major characters "
+    "(life/death, relationship changes, etc.) that were explicitly shown. Depict them in concrete detail. "
+    "Do not introduce new events. Do not summarize meanings, themes, or changes. "
+    "Use only concrete actions, locations, objects, and character states to leave a lingering impression. "
+    "Avoid abstract words such as 'reconciliation', 'liberation', 'peace', 'redemption', 'transformation', 'acceptance'."
+)
+EPILOGUE_PROMPT = EPILOGUE_PROMPT_JA  # will be overwritten after language selection
 
 # 自動プレイモード（起動引数で設定）
 AUTO_PLAY_MODE: str | None = None  # None=手動, "normal"=通常, "deviate"=逸脱
@@ -49,6 +70,10 @@ DEBUG_MODE: bool = False
 
 # バッチ実行回数（--batch N で設定）
 BATCH_COUNT: int = 0  # 0=通常, N=N回バッチ実行
+
+# 言語設定
+LANGUAGE: str = "ja"         # 手動プレイ用
+BATCH_LANGUAGE: str = "ja"   # バッチ用
 
 # バッチ用ジャンルリスト
 BATCH_GENRES = [
@@ -553,70 +578,156 @@ def _build_user_msg(action: str, dice_result: dict | None) -> str:
 def check_ending(reply: str) -> bool:
     return ENDING_MARKER in reply
 
-PLOT_MODE_LABELS = {
+PLOT_MODE_LABELS_JA = {
     "1": ("strong", "プロット参照・強拘束"),
     "2": ("adaptive", "プロット参照・適応（逸脱を検出して現在地で物語を再構成）"),
     "3": ("off", "プロット参照・自由"),
     "4": ("improv", "プロットなし・即興"),
 }
+PLOT_MODE_LABELS_EN = {
+    "1": ("strong", "Plot-bound (strict)"),
+    "2": ("adaptive", "Plot-adaptive (detects deviation and reconstructs the story from the current point)"),
+    "3": ("off", "Plot-guided (free)"),
+    "4": ("improv", "Improvised (no plot)"),
+}
+PLOT_MODE_LABELS = PLOT_MODE_LABELS_JA  # will be overwritten after language selection
 
 def ask_plot_mode() -> str:
+    lang = LANGUAGE if not AUTO_PLAY_MODE else BATCH_LANGUAGE
     print()
-    print("物語の軸:")
-    print("  1. プロット参照・強拘束（プロット強制回収）★初めてならこれを推奨")
-    print("  2. プロット参照・適応（逸脱を検出して現在地で物語を再構成）")
-    print("  3. プロット参照・自由（プロットに沿うよう誘導するが逸脱自由）")
-    print("  4. プロットなし・即興（GMが即興で物語を作る）")
-    while True:
-        choice = ask("選択 [1/2/3/4]: ")
-        if choice in PLOT_MODE_LABELS:
-            mode, label = PLOT_MODE_LABELS[choice]
-            system_print(f"物語の軸: {label}")
-            return mode
-        system_print("1〜4のいずれかを入力してください。")
+    if lang == "en":
+        print("Story axis:")
+        print("  1. Plot-bound strict (forced recovery) ★ Recommended for first-timers")
+        print("  2. Plot-adaptive (detects deviation and reconstructs from current point)")
+        print("  3. Plot-guided free (guides toward plot but deviation is allowed)")
+        print("  4. Improvised (GM creates story on the fly)")
+        while True:
+            choice = ask("Choice [1/2/3/4]: ")
+            if choice in PLOT_MODE_LABELS:
+                mode, label = PLOT_MODE_LABELS[choice]
+                system_print(f"Story axis: {label}")
+                return mode
+            system_print("Please enter 1, 2, 3, or 4.")
+    else:
+        print("物語の軸:")
+        print("  1. プロット参照・強拘束（プロット強制回収）★初めてならこれを推奨")
+        print("  2. プロット参照・適応（逸脱を検出して現在地で物語を再構成）")
+        print("  3. プロット参照・自由（プロットに沿うよう誘導するが逸脱自由）")
+        print("  4. プロットなし・即興（GMが即興で物語を作る）")
+        while True:
+            choice = ask("選択 [1/2/3/4]: ")
+            if choice in PLOT_MODE_LABELS:
+                mode, label = PLOT_MODE_LABELS[choice]
+                system_print(f"物語の軸: {label}")
+                return mode
+            system_print("1〜4のいずれかを入力してください。")
 
 def ask_use_dice() -> bool:
+    lang = LANGUAGE if not AUTO_PLAY_MODE else BATCH_LANGUAGE
     print()
-    ans = ask("ダイス判定を使いますか？ [Y/n]: ")
-    use_dice = ans.lower() != "n"
-    system_print(f"ダイス判定: {'使う' if use_dice else '使わない'}")
+    if lang == "en":
+        ans = ask("Use dice rolls? [Y/n]: ")
+        use_dice = ans.lower() != "n"
+        system_print(f"Dice rolls: {'on' if use_dice else 'off'}")
+    else:
+        ans = ask("ダイス判定を使いますか？ [Y/n]: ")
+        use_dice = ans.lower() != "n"
+        system_print(f"ダイス判定: {'使う' if use_dice else '使わない'}")
     return use_dice
 
-DIFFICULTY_LABELS = {
+DIFFICULTY_LABELS_JA = {
     "1": ("easy", "易しい"),
     "2": ("normal", "標準"),
     "3": ("hard", "厳しい"),
 }
+DIFFICULTY_LABELS_EN = {
+    "1": ("easy", "Easy"),
+    "2": ("normal", "Normal"),
+    "3": ("hard", "Hard"),
+}
+DIFFICULTY_LABELS = DIFFICULTY_LABELS_JA  # will be overwritten after language selection
 
 def ask_difficulty() -> str:
+    lang = LANGUAGE if not AUTO_PLAY_MODE else BATCH_LANGUAGE
     print()
-    print("難易度:")
-    print("  1. 易しい")
-    print("  2. 標準（おすすめ）")
-    print("  3. 厳しい")
-    while True:
-        choice = ask("選択 [1/2/3]: ")
-        if choice in DIFFICULTY_LABELS:
-            preset, label = DIFFICULTY_LABELS[choice]
-            system_print(f"難易度: {label}")
-            return preset
-        system_print("1〜3のいずれかを入力してください。")
+    if lang == "en":
+        print("Difficulty:")
+        print("  1. Easy")
+        print("  2. Normal (recommended)")
+        print("  3. Hard")
+        while True:
+            choice = ask("Choice [1/2/3]: ")
+            if choice in DIFFICULTY_LABELS:
+                preset, label = DIFFICULTY_LABELS[choice]
+                system_print(f"Difficulty: {label}")
+                return preset
+            system_print("Please enter 1, 2, or 3.")
+    else:
+        print("難易度:")
+        print("  1. 易しい")
+        print("  2. 標準（おすすめ）")
+        print("  3. 厳しい")
+        while True:
+            choice = ask("選択 [1/2/3]: ")
+            if choice in DIFFICULTY_LABELS:
+                preset, label = DIFFICULTY_LABELS[choice]
+                system_print(f"難易度: {label}")
+                return preset
+            system_print("1〜3のいずれかを入力してください。")
 
 def ask_gm_character() -> str:
     """GMの一言コメントのあり/なしを番号入力で選択する。"""
+    lang = LANGUAGE if not AUTO_PLAY_MODE else BATCH_LANGUAGE
     print()
-    print("GMの一言コメント:")
-    print("  1. あり（シニカル）")
-    print("  2. なし")
+    if lang == "en":
+        print("GM comment:")
+        print("  1. On (cynical)")
+        print("  2. Off")
+        while True:
+            choice = ask("Choice [1-2]: ")
+            if choice == "1":
+                system_print("GM comment: on (cynical)")
+                return "cynical"
+            elif choice == "2":
+                system_print("GM comment: off")
+                return "none"
+            system_print("Please enter 1 or 2.")
+    else:
+        print("GMの一言コメント:")
+        print("  1. あり（シニカル）")
+        print("  2. なし")
+        while True:
+            choice = ask("選択 [1-2]: ")
+            if choice == "1":
+                system_print("GMの一言: あり（シニカル）")
+                return "cynical"
+            elif choice == "2":
+                system_print("GMの一言: なし")
+                return "none"
+            system_print("1か2を入力してください。")
+
+def ask_language() -> str:
+    """起動時に言語を選択する。戻り値は "ja" または "en"。"""
+    global COMMANDS, PLOT_MODE_LABELS, DIFFICULTY_LABELS, EPILOGUE_PROMPT
+    print()
+    print("Language / 言語:")
+    print("  1. 日本語")
+    print("  2. English")
     while True:
-        choice = ask("選択 [1-2]: ")
+        choice = ask("Choice / 選択 [1/2]: ")
         if choice == "1":
-            system_print("GMの一言: あり（シニカル）")
-            return "cynical"
+            COMMANDS = COMMANDS_JA
+            PLOT_MODE_LABELS = PLOT_MODE_LABELS_JA
+            DIFFICULTY_LABELS = DIFFICULTY_LABELS_JA
+            EPILOGUE_PROMPT = EPILOGUE_PROMPT_JA
+            return "ja"
         elif choice == "2":
-            system_print("GMの一言: なし")
-            return "none"
-        system_print("1か2を入力してください。")
+            COMMANDS = COMMANDS_EN
+            PLOT_MODE_LABELS = PLOT_MODE_LABELS_EN
+            DIFFICULTY_LABELS = DIFFICULTY_LABELS_EN
+            EPILOGUE_PROMPT = EPILOGUE_PROMPT_EN
+            return "en"
+        print("Please enter 1 or 2 / 1か2を入力してください。")
 
 
 def _is_off() -> bool:
@@ -650,7 +761,7 @@ def _handle_gm_char_and_turning_point(action: str, h: list) -> None:
 
     # GMキャラクターコメント（turning_pointの場合のみ）
     if is_turning_point and gm_character != "none":
-        comment = generate_gm_char_comment(action, h, gm_character, gm_char_log=s.get("gm_char_log", []))
+        comment = generate_gm_char_comment(action, h, gm_character, gm_char_log=s.get("gm_char_log", []), language=s.get("language", "ja"))
         if comment:
             gm_char_print(comment)
             if DEBUG_MODE:
@@ -674,10 +785,17 @@ def _handle_gm_char_and_turning_point(action: str, h: list) -> None:
 
 
 def start_new_game() -> tuple[list, str, str]:
-    while not (genre := ask("ジャンル: ").strip()):
-        system_print("ジャンルを入力してください。")
-    while not (title := ask("タイトル: ").strip()):
-        system_print("タイトルを入力してください。")
+    lang = LANGUAGE
+    if lang == "en":
+        while not (genre := ask("Genre: ").strip()):
+            system_print("Please enter a genre.")
+        while not (title := ask("Title: ").strip()):
+            system_print("Please enter a title.")
+    else:
+        while not (genre := ask("ジャンル: ").strip()):
+            system_print("ジャンルを入力してください。")
+        while not (title := ask("タイトル: ").strip()):
+            system_print("タイトルを入力してください。")
     plot_mode = ask_plot_mode()
     use_dice = ask_use_dice()
     if use_dice:
@@ -699,7 +817,8 @@ def start_new_game() -> tuple[list, str, str]:
     state.init(genre, title, plot, plot_mode)
     state.update({"use_dice": use_dice, "difficulty_preset": difficulty_preset,
                   "auto_play_mode": AUTO_PLAY_MODE or "manual",
-                  "gm_character": gm_character})
+                  "gm_character": gm_character,
+                  "language": LANGUAGE})
 
     if plot_mode in ("strong", "off") and plot:
         queue = beat_mod.build_queue(plot)
@@ -707,13 +826,17 @@ def start_new_game() -> tuple[list, str, str]:
         if DEBUG_MODE:
             print(f"[BEAT] queue built: {len(queue)} beats", file=sys.stderr)
 
-    h = hist.new_history(plot, plot_mode, genre)
+    h = hist.new_history(plot, plot_mode, genre, language=LANGUAGE)
     start_msg = build_start_message(genre, title, plot)
     h = hist.add_user(h, start_msg)
 
     print()
-    print(f"── 「{title}」 開始 ──")
-    system_print("行き詰まったら /hint で行動候補を表示できます。")
+    if LANGUAGE == "en":
+        print(f'── "{title}" Start ──')
+        system_print('If you get stuck, /hint shows action suggestions.')
+    else:
+        print(f"── 「{title}」 開始 ──")
+        system_print("行き詰まったら /hint で行動候補を表示できます。")
     print()
 
     reply = call_gm(_build_api_messages(h))
@@ -722,12 +845,18 @@ def start_new_game() -> tuple[list, str, str]:
         if plot_mode == "improv":
             improv_name = extract_protagonist_name(reply)
             if improv_name:
-                print(f"あなたは{improv_name}として、この物語を紡ぎます。")
+                if LANGUAGE == "en":
+                    print(f"You are {improv_name}. Your story begins now.")
+                else:
+                    print(f"あなたは{improv_name}として、この物語を紡ぎます。")
                 print()
         else:
             protagonist = plot.get("protagonist", {}) if plot else {}
             if protagonist.get("name"):
-                print(f"あなたは{protagonist['name']}として、この物語を紡ぎます。")
+                if LANGUAGE == "en":
+                    print(f"You are {protagonist['name']}. Your story begins now.")
+                else:
+                    print(f"あなたは{protagonist['name']}として、この物語を紡ぎます。")
                 print()
     if reply.startswith("[ERROR"):
         error_print("応答生成に失敗しました。/retryで再試行できます。")
@@ -774,8 +903,12 @@ def resume_game() -> tuple[list, str, str] | None:
             print(f"[BEAT] queue rebuilt on load: {len(queue)} beats", file=sys.stderr)
     title = s.get("title", "")
     genre = s.get("genre", "")
-    h = hist.rebuild_system(h, plot, plot_mode, genre)
-    system_print(f"ロード完了: 「{title}」　履歴を表示します...")
+    lang = s.get("language", "ja")
+    h = hist.rebuild_system(h, plot, plot_mode, genre, language=lang)
+    if lang == "en":
+        system_print(f'Loaded: "{title}" — showing history...')
+    else:
+        system_print(f"ロード完了: 「{title}」　履歴を表示します...")
     print()
 
     _print_history(h)
@@ -812,11 +945,19 @@ def save_session_json(h: list, title: str) -> None:
     }
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
-    system_print(f"セッションを保存しました: {filename}")
+    lang = state.get().get("language", "ja")
+    if lang == "en":
+        system_print(f"Session saved: {filename}")
+    else:
+        system_print(f"セッションを保存しました: {filename}")
 
 def handle_ending(h: list) -> tuple[list, bool]:
     """エンディング後の選択を処理する。戻り値は (履歴, 終了するか)。"""
-    system_print("エンディングを迎えました。お疲れさまでした。")
+    lang = state.get().get("language", "ja")
+    if lang == "en":
+        system_print("The story has reached its ending. Thank you for playing!")
+    else:
+        system_print("エンディングを迎えました。お疲れさまでした。")
     if AUTO_PLAY_MODE:
         end_reason = "ending"
         state.update({"end_reason": end_reason})
@@ -824,27 +965,48 @@ def handle_ending(h: list) -> tuple[list, bool]:
         h = hist.add_user(h, EPILOGUE_PROMPT)
         reply = call_gm(hist.build_for_api(h))
         if reply.startswith("[ERROR"):
-            error_print("エピローグの生成に失敗しました。")
+            if lang == "en":
+                error_print("Failed to generate epilogue.")
+            else:
+                error_print("エピローグの生成に失敗しました。")
             h.pop()
         else:
             h = hist.add_assistant(h, reply)
         return h, True
-    print("  1. 終了する")
-    print("  2. エピローグを生成する")
-    while True:
-        ans = ask("選択 [1/2]: ")
-        if ans == "1":
-            return h, True
-        if ans == "2":
-            h = hist.add_user(h, EPILOGUE_PROMPT)
-            reply = call_gm(hist.build_for_api(h))
-            if reply.startswith("[ERROR"):
-                error_print("エピローグの生成に失敗しました。")
-                h.pop()
-            else:
-                h = hist.add_assistant(h, reply)
-            return h, True
-        system_print("1か2を入力してください。")
+    if lang == "en":
+        print("  1. Quit")
+        print("  2. Generate epilogue")
+        while True:
+            ans = ask("Choice [1/2]: ")
+            if ans == "1":
+                return h, True
+            if ans == "2":
+                h = hist.add_user(h, EPILOGUE_PROMPT)
+                reply = call_gm(hist.build_for_api(h))
+                if reply.startswith("[ERROR"):
+                    error_print("Failed to generate epilogue.")
+                    h.pop()
+                else:
+                    h = hist.add_assistant(h, reply)
+                return h, True
+            system_print("Please enter 1 or 2.")
+    else:
+        print("  1. 終了する")
+        print("  2. エピローグを生成する")
+        while True:
+            ans = ask("選択 [1/2]: ")
+            if ans == "1":
+                return h, True
+            if ans == "2":
+                h = hist.add_user(h, EPILOGUE_PROMPT)
+                reply = call_gm(hist.build_for_api(h))
+                if reply.startswith("[ERROR"):
+                    error_print("エピローグの生成に失敗しました。")
+                    h.pop()
+                else:
+                    h = hist.add_assistant(h, reply)
+                return h, True
+            system_print("1か2を入力してください。")
 
 def push_user(h: list, content: str, replace_pending: bool) -> list:
     """userメッセージを追加する。replace_pending=Trueなら、エラーで未応答のまま
@@ -878,14 +1040,20 @@ def run_single_session(plot_mode: str) -> None:
         error_print(f"タイトルが空です: {result}")
         return
 
-    system_print(f"ジャンル: {genre} / タイトル: 「{title}」")
+    if BATCH_LANGUAGE == "en":
+        system_print(f'Genre: {genre} / Title: "{title}"')
+    else:
+        system_print(f"ジャンル: {genre} / タイトル: 「{title}」")
 
     # バッチ用ダイス設定を適用
     dice_mod.set_difficulty_preset(BATCH_DIFFICULTY)
     difficulty_preset = BATCH_DIFFICULTY
 
     if plot_mode == "improv":
-        system_print("プロット生成なし")
+        if BATCH_LANGUAGE == "en":
+            system_print("No plot generation (improv mode)")
+        else:
+            system_print("プロット生成なし")
         plot = {}
     else:
         plot = plot_mod.generate(genre, title)
@@ -893,7 +1061,8 @@ def run_single_session(plot_mode: str) -> None:
     state.init(genre, title, plot, plot_mode)
     state.update({"use_dice": BATCH_USE_DICE, "difficulty_preset": difficulty_preset,
                   "auto_play_mode": AUTO_PLAY_MODE or "manual",
-                  "gm_character": BATCH_GM_CHARACTER})
+                  "gm_character": BATCH_GM_CHARACTER,
+                  "language": BATCH_LANGUAGE})
 
     if plot_mode in ("strong", "off") and plot:
         queue = beat_mod.build_queue(plot)
@@ -901,16 +1070,22 @@ def run_single_session(plot_mode: str) -> None:
         if DEBUG_MODE:
             print(f"[BEAT] queue built: {len(queue)} beats", file=sys.stderr)
 
-    h = hist.new_history(plot, plot_mode, genre)
+    h = hist.new_history(plot, plot_mode, genre, language=BATCH_LANGUAGE)
     start_msg = build_start_message(genre, title, plot)
     h = hist.add_user(h, start_msg)
 
     print()
-    print(f"── 「{title}」 開始 ──")
+    if BATCH_LANGUAGE == "en":
+        print(f'── "{title}" Start ──')
+    else:
+        print(f"── 「{title}」 開始 ──")
     protagonist = plot.get("protagonist", {}) if plot else {}
     if protagonist.get("name"):
         name = protagonist["name"]
-        print(f"あなたは{name}として、この物語を紡ぎます。")
+        if BATCH_LANGUAGE == "en":
+            print(f"You are {name}. Your story begins now.")
+        else:
+            print(f"あなたは{name}として、この物語を紡ぎます。")
         print()
 
     reply = call_gm(_build_api_messages(h))
@@ -928,7 +1103,10 @@ def run_single_session(plot_mode: str) -> None:
         auto_play_turn += 1
         if auto_play_turn > AUTO_PLAY_MAX_TURNS:
             state.update({"end_reason": "turn_limit"})
-            system_print(f"自動プレイのターン上限（{AUTO_PLAY_MAX_TURNS}ターン）に達しました。終了します。")
+            if BATCH_LANGUAGE == "en":
+                system_print(f"Auto-play turn limit ({AUTO_PLAY_MAX_TURNS} turns) reached. Ending session.")
+            else:
+                system_print(f"自動プレイのターン上限（{AUTO_PLAY_MAX_TURNS}ターン）に達しました。終了します。")
             save_session_json(h, title)
             break
 
@@ -975,12 +1153,18 @@ def run_single_session(plot_mode: str) -> None:
 
         reply = call_gm(_build_api_messages(h))
         if reply == "[CONTEXT_LIMIT]":
-            system_print("コンテキスト上限に達し続行不可能の為、物語をここで終了します。")
+            if BATCH_LANGUAGE == "en":
+                system_print("Context limit reached. The story ends here.")
+            else:
+                system_print("コンテキスト上限に達し続行不可能の為、物語をここで終了します。")
             state.update({"end_reason": "context_limit"})
             save_session_json(h, title)
             break
         if reply.startswith("[ERROR"):
-            error_print("応答生成に失敗しました。スキップして続行します。")
+            if BATCH_LANGUAGE == "en":
+                error_print("Failed to generate response. Skipping turn.")
+            else:
+                error_print("応答生成に失敗しました。スキップして続行します。")
             h.pop()
             continue
 
@@ -1008,7 +1192,7 @@ def run_single_session(plot_mode: str) -> None:
 
 
 def main():
-    global AUTO_PLAY_MODE, DEBUG_MODE, BATCH_COUNT
+    global AUTO_PLAY_MODE, DEBUG_MODE, BATCH_COUNT, LANGUAGE, BATCH_LANGUAGE
     if "--help" in sys.argv or "-h" in sys.argv:
         print("使い方: python main.py [オプション]")
         print()
@@ -1044,22 +1228,41 @@ def main():
         beat_mod.DEBUG_MODE = True
         plot_mod.DEBUG_MODE = True
 
+    # 言語選択（バナー表示前に行う）
+    lang = ask_language()
+    LANGUAGE = lang
+    BATCH_LANGUAGE = lang
+
     print()
-    print("╔══════════════════════════════════════════╗")
-    print("║  ナラティブインタラクト (LM Studio版)    ║")
-    print("╚══════════════════════════════════════════╝")
-    if AUTO_PLAY_MODE:
-        print(f"[自動プレイモード: {'通常' if AUTO_PLAY_MODE == 'normal' else '逸脱'}]")
-    if BATCH_COUNT > 0:
-        print(f"[バッチモード: {BATCH_COUNT}回実行]")
-    print()
-    print("コマンド一覧は /help または /h")
+    if lang == "en":
+        print("╔══════════════════════════════════════════╗")
+        print("║     NARRATIVE INTERACT (LM Studio)       ║")
+        print("╚══════════════════════════════════════════╝")
+        if AUTO_PLAY_MODE:
+            print(f"[Auto-play mode: {'normal' if AUTO_PLAY_MODE == 'normal' else 'deviate'}]")
+        if BATCH_COUNT > 0:
+            print(f"[Batch mode: {BATCH_COUNT} sessions]")
+        print()
+        print("Type /help or /h for commands")
+    else:
+        print("╔══════════════════════════════════════════╗")
+        print("║  ナラティブインタラクト (LM Studio版)    ║")
+        print("╚══════════════════════════════════════════╝")
+        if AUTO_PLAY_MODE:
+            print(f"[自動プレイモード: {'通常' if AUTO_PLAY_MODE == 'normal' else '逸脱'}]")
+        if BATCH_COUNT > 0:
+            print(f"[バッチモード: {BATCH_COUNT}回実行]")
+        print()
+        print("コマンド一覧は /help または /h")
     print()
 
     # バッチモード
     if BATCH_COUNT > 0:
         if not AUTO_PLAY_MODE:
-            print("--batch は --normal または --deviate と併用してください。")
+            if lang == "en":
+                print("--batch must be used with --normal or --deviate.")
+            else:
+                print("--batch は --normal または --deviate と併用してください。")
             sys.exit(1)
         plot_mode = ask_plot_mode()
         print()
@@ -1072,10 +1275,16 @@ def main():
         BATCH_GM_CHARACTER = ask_gm_character()
         print()
         for i in range(BATCH_COUNT):
-            print(f"═══ バッチ {i+1}/{BATCH_COUNT} ═══")
+            if lang == "en":
+                print(f"═══ Batch {i+1}/{BATCH_COUNT} ═══")
+            else:
+                print(f"═══ バッチ {i+1}/{BATCH_COUNT} ═══")
             run_single_session(plot_mode)
             print()
-        system_print(f"バッチ実行完了: {BATCH_COUNT}回")
+        if lang == "en":
+            system_print(f"Batch complete: {BATCH_COUNT} sessions")
+        else:
+            system_print(f"バッチ実行完了: {BATCH_COUNT}回")
         return
 
     h, genre, title = None, "", ""
@@ -1083,26 +1292,47 @@ def main():
     if save_mod.exists():
         if AUTO_PLAY_MODE:
             save_mod.delete()
-            system_print("自動プレイモード：セーブデータを削除して新規開始します。")
+            if lang == "en":
+                system_print("Auto-play mode: deleting save data and starting fresh.")
+            else:
+                system_print("自動プレイモード：セーブデータを削除して新規開始します。")
         else:
             s, _ = save_mod.load()
             saved_title = s.get("title", "") if s else ""
-            system_print(f"セーブデータが見つかりました:「{saved_title}」")
-            print("  1. 続きから始める")
-            print("  2. 削除して新しく始める")
-            while True:
-                ans = ask("選択 [1/2]: ")
-                if ans == "1":
-                    result = resume_game()
-                    if result:
-                        h, genre, title = result
-                        initial_reply = ""
-                    break
-                elif ans == "2":
-                    save_mod.delete()
-                    system_print("セーブデータを削除しました。")
-                    break
-                system_print("1か2を入力してください。")
+            if lang == "en":
+                system_print(f'Save data found: "{saved_title}"')
+                print("  1. Continue")
+                print("  2. Delete and start new")
+                while True:
+                    ans = ask("Choice [1/2]: ")
+                    if ans == "1":
+                        result = resume_game()
+                        if result:
+                            h, genre, title = result
+                            initial_reply = ""
+                        break
+                    elif ans == "2":
+                        save_mod.delete()
+                        system_print("Save data deleted.")
+                        break
+                    system_print("Please enter 1 or 2.")
+            else:
+                system_print(f"セーブデータが見つかりました:「{saved_title}」")
+                print("  1. 続きから始める")
+                print("  2. 削除して新しく始める")
+                while True:
+                    ans = ask("選択 [1/2]: ")
+                    if ans == "1":
+                        result = resume_game()
+                        if result:
+                            h, genre, title = result
+                            initial_reply = ""
+                        break
+                    elif ans == "2":
+                        save_mod.delete()
+                        system_print("セーブデータを削除しました。")
+                        break
+                    system_print("1か2を入力してください。")
 
     if h is None:
         h, genre, title, initial_reply = start_new_game()
@@ -1122,7 +1352,11 @@ def main():
             auto_play_turn += 1
             if auto_play_turn > AUTO_PLAY_MAX_TURNS:
                 state.update({"end_reason": "turn_limit"})
-                system_print(f"自動プレイのターン上限（{AUTO_PLAY_MAX_TURNS}ターン）に達しました。終了します。")
+                _lang = state.get().get("language", "ja")
+                if _lang == "en":
+                    system_print(f"Auto-play turn limit ({AUTO_PLAY_MAX_TURNS} turns) reached. Ending session.")
+                else:
+                    system_print(f"自動プレイのターン上限（{AUTO_PLAY_MAX_TURNS}ターン）に達しました。終了します。")
                 if DEBUG_MODE:
                     save_session_json(h, title)
                 break
@@ -1153,7 +1387,11 @@ def main():
                         break
                     print(f"\nあなたの行動: {action}")
         else:
-            action = ask("\nあなたの行動: ")
+            _lang = state.get().get("language", "ja")
+            if _lang == "en":
+                action = ask("\nYour action: ")
+            else:
+                action = ask("\nあなたの行動: ")
 
         if not action:
             continue
@@ -1163,7 +1401,11 @@ def main():
             continue
 
         if action == "/quit":
-            print("終了します。")
+            _lang = state.get().get("language", "ja")
+            if _lang == "en":
+                print("Quitting.")
+            else:
+                print("終了します。")
             break
 
         if action == "/save":
@@ -1196,13 +1438,20 @@ def main():
                             queue[new_ptr]["done"] = False
                         state.update({"beat_ptr": new_ptr, "beat_queue": queue})
             reply = call_gm(_build_api_messages(h))
+            _lang = state.get().get("language", "ja")
             if reply == "[CONTEXT_LIMIT]":
-                system_print("コンテキスト上限に達し続行不可能の為、物語をここで終了します。")
+                if _lang == "en":
+                    system_print("Context limit reached. The story ends here.")
+                else:
+                    system_print("コンテキスト上限に達し続行不可能の為、物語をここで終了します。")
                 state.update({"end_reason": "context_limit"})
                 save_mod.save(state.get(), h)
                 break
             if reply.startswith("[ERROR"):
-                error_print("応答生成に失敗しました。/retryで再試行できます。")
+                if _lang == "en":
+                    error_print("Failed to generate response. You can /retry.")
+                else:
+                    error_print("応答生成に失敗しました。/retryで再試行できます。")
                 pending_failed = True
                 continue
             pending_failed = False
@@ -1229,7 +1478,11 @@ def main():
             continue
 
         if action.startswith("/") and action not in COMMANDS:
-            system_print(f"コマンドにありません: {action}　/help で一覧を確認できます。")
+            _lang = state.get().get("language", "ja")
+            if _lang == "en":
+                system_print(f"Unknown command: {action}  Type /help for a list.")
+            else:
+                system_print(f"コマンドにありません: {action}　/help で一覧を確認できます。")
             continue
 
 
@@ -1239,13 +1492,18 @@ def main():
             if hint_base and hint_base[-1]["role"] == "user":
                 hint_base = hint_base[:-1]
             # 最後がassistantでない場合（空履歴等）はhintが出せないのでスキップ
+            _lang = state.get().get("language", "ja")
             if not hint_base or hint_base[-1]["role"] != "assistant":
-                system_print("ヒントを表示するには最初のGM描写が必要です。")
+                if _lang == "en":
+                    system_print("Need at least one GM response before showing hints.")
+                else:
+                    system_print("ヒントを表示するには最初のGM描写が必要です。")
                 continue
-            hint_msg = hint_base + [{
-                "role": "user",
-                "content": "今の状況でプレイヤーが取れる行動を3〜4つ提案してください。形式：各行を「・」で始め、行動を10〜20字で簡潔に記述する。説明や補足は不要。"
-            }]
+            if _lang == "en":
+                hint_content = "Suggest 3-4 actions the player can take in the current situation. Format: start each line with '・', describe each action in 10-20 characters. No explanation needed."
+            else:
+                hint_content = "今の状況でプレイヤーが取れる行動を3〜4つ提案してください。形式：各行を「・」で始め、行動を10〜20字で簡潔に記述する。説明や補足は不要。"
+            hint_msg = hint_base + [{"role": "user", "content": hint_content}]
             call_gm(hint_msg)
             continue
 
@@ -1253,7 +1511,11 @@ def main():
         is_forced_ending = action.startswith("（物語を終わらせてください）")
         dice_result = dice_mod.judge(action, h) if (state.get().get("use_dice", True) and not is_forced_ending) else None
         if dice_result and dice_result.get("error"):
-            error_print("ダイス判定に失敗しました（APIエラーまたはJSON解析失敗）。判定なしで続行します。")
+            _lang = state.get().get("language", "ja")
+            if _lang == "en":
+                error_print("Dice roll failed (API error or JSON parse failure). Continuing without roll.")
+            else:
+                error_print("ダイス判定に失敗しました（APIエラーまたはJSON解析失敗）。判定なしで続行します。")
             dice_result = None
         elif dice_result:
             dice_mod.display_result(dice_result)
@@ -1266,7 +1528,11 @@ def main():
         reply = call_gm(_build_api_messages(h))
 
         if reply.startswith("[ERROR"):
-            error_print("応答生成に失敗しました。/retryで再試行できます。")
+            _lang = state.get().get("language", "ja")
+            if _lang == "en":
+                error_print("Failed to generate response. You can /retry.")
+            else:
+                error_print("応答生成に失敗しました。/retryで再試行できます。")
             # userメッセージ（ダイス結果込み）は保持したまま続行。
             # /retryで再利用でき、別の行動を入力した場合は置き換えられる。
             pending_failed = True
