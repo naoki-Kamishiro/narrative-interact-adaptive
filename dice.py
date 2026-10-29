@@ -41,6 +41,33 @@ risk: 失敗した場合の代償の重さ（low=軽い, mid=中程度, high=重
 uncertainty: 行動の結果がどれだけ読みにくいか（low=ほぼ確実, mid=半々, high=非常に不確実）
 """
 
+JUDGE_PROMPT_EN = """\
+Evaluate the player's action and decide whether a dice roll is required.
+
+A roll is required ONLY if the action meets one of these:
+- Success/failure would branch the story in a meaningful way
+- The action involves skill, luck, negotiation, repair, investigation, or other uncertainty
+- The player is taking a significant risk
+- The action is an observational attempt to discover hidden information or gather evidence
+
+No roll required (need_roll: false) if:
+- The protagonist explicitly chooses death, self-destruction, surrender, or abandonment
+- The action describes only an internal state, emotion, resolve, or acceptance (not externally observable)
+
+Do NOT judge by the length or complexity of the action text. Judge only by the actual content.
+
+Reply ONLY in the following JSON format. No other text.
+
+If no roll needed:
+{"need_roll": false}
+
+If roll needed:
+{"need_roll": true, "risk": "low|mid|high", "uncertainty": "low|mid|high", "reason": "brief reason in 5 words or less"}
+
+risk: severity of failure consequence (low=minor, mid=moderate, high=severe)
+uncertainty: how unpredictable the outcome is (low=near-certain, mid=50-50, high=very uncertain)
+"""
+
 # risk/uncertaintyの組み合わせから難易度を決定論的に算出するテーブル
 _LEVEL_VALUE = {"low": -2, "mid": 0, "high": 2}
 _BASE_DIFFICULTY = 7  # d20で約65%の成功率を基準にする
@@ -78,16 +105,23 @@ def _compute_difficulty(risk: str, uncertainty: str) -> int:
     difficulty = _BASE_DIFFICULTY + risk_v + unc_v + _difficulty_offset
     return max(6, min(18, difficulty))
 
-def judge(action: str, history: list) -> dict | None:
+def judge(action: str, history: list, language: str = "ja") -> dict | None:
     # 直近のGM応答を文脈として渡す（状況依存の判定精度向上のため）
     last_gm = next(
         (m["content"] for m in reversed(history) if m["role"] == "assistant"),
         None
     )
-    context_line = f"\n現在の状況（直前のGM描写）:\n{last_gm[:300]}\n\n" if last_gm else ""
+    if language == "en":
+        prompt = JUDGE_PROMPT_EN
+        context_line = f"\nCurrent situation (last GM description):\n{last_gm[:300]}\n\n" if last_gm else ""
+        user_content = f"{context_line}Action: {action}"
+    else:
+        prompt = JUDGE_PROMPT
+        context_line = f"\n現在の状況（直前のGM描写）:\n{last_gm[:300]}\n\n" if last_gm else ""
+        user_content = f"{context_line}行動: {action}"
     messages = [
-        {"role": "system", "content": JUDGE_PROMPT},
-        {"role": "user", "content": f"{context_line}行動: {action}"},
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": user_content},
     ]
     raw = chat_json(messages)
 
@@ -114,7 +148,7 @@ def judge(action: str, history: list) -> dict | None:
 
     risk = data.get("risk", "mid")
     uncertainty = data.get("uncertainty", "mid")
-    reason = data.get("reason", "判定")
+    reason = data.get("reason", "roll" if language == "en" else "判定")
 
     difficulty = _compute_difficulty(risk, uncertainty)
     dice = roll_d20()
@@ -129,13 +163,22 @@ def judge(action: str, history: list) -> dict | None:
         "intensity": intensity,
     }
 
-def display_result(result: dict) -> None:
+def display_result(result: dict, language: str = "ja") -> None:
     """ダイス結果をコンソールに表示する。"""
-    outcome = "成功" if result["success"] else "失敗"
-    intensity_label = {
-        "decisive": "（決定的）",
-        "normal": "",
-        "severe": "（重大）",
-    }.get(result.get("intensity", "normal"), "")
-    print(f"🎲 判定: {result['reason']} / 難易度{result['difficulty']} / 出目{result['dice']} → {outcome}{intensity_label}")
+    if language == "en":
+        outcome = "Success" if result["success"] else "Failure"
+        intensity_label = {
+            "decisive": " (Decisive)",
+            "normal": "",
+            "severe": " (Severe)",
+        }.get(result.get("intensity", "normal"), "")
+        print(f"🎲 Roll: {result['reason']} / DC {result['difficulty']} / Rolled {result['dice']} → {outcome}{intensity_label}")
+    else:
+        outcome = "成功" if result["success"] else "失敗"
+        intensity_label = {
+            "decisive": "（決定的）",
+            "normal": "",
+            "severe": "（重大）",
+        }.get(result.get("intensity", "normal"), "")
+        print(f"🎲 判定: {result['reason']} / 難易度{result['difficulty']} / 出目{result['dice']} → {outcome}{intensity_label}")
 

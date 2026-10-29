@@ -39,11 +39,11 @@ COMMANDS_EN = {
 }
 COMMANDS = COMMANDS_JA  # will be overwritten after language selection
 
-ENDING_MARKER = "【エンディング】"
+ENDING_MARKER = "[Ending]"
 
 EPILOGUE_PROMPT_JA = (
     "エピローグを200字程度で書いてください。"
-    "（これはエピローグ専用の依頼です。「【エンディング】以降の描写禁止」ルールはエピローグには適用されません。）"
+    "（これはエピローグ専用の依頼です。「[Ending]以降の描写禁止」ルールはエピローグには適用されません。）"
     "本編で生じた代償・損失（負傷・失った力・犠牲等）と主要人物の状態（生死・関係の変化等）のうち、"
     "本編で明示されたものを1〜2点、具体的な描写で回収すること。"
     "新しい出来事は起こさず、意味・テーマ・変化の総括や説明もせず、"
@@ -53,7 +53,7 @@ EPILOGUE_PROMPT_JA = (
 )
 EPILOGUE_PROMPT_EN = (
     "Please write an epilogue of around 200 characters. "
-    "(This is an epilogue-only request. The rule 'no depiction after 【エンディング】' does not apply here.) "
+    "(This is an epilogue-only request. The rule 'no depiction after [Ending]' does not apply here.) "
     "Pick 1-2 consequences or losses from the main story (injuries, sacrifices, lost powers, etc.) and the states of major characters "
     "(life/death, relationship changes, etc.) that were explicitly shown. Depict them in concrete detail. "
     "Do not introduce new events. Do not summarize meanings, themes, or changes. "
@@ -278,7 +278,7 @@ def _build_adaptive_beat_queue(new_plot: dict) -> list:
             "done": False,
             "injection": (
                 f"（GMへの場面指示: 着地点「{ending}」の結末を迎えてください。"
-                f"物語が完結した場合は最後の1行に「【エンディング】」とのみ出力すること。）"
+                f"物語が完結した場合は最後の1行に「[Ending]」とのみ出力すること。）"
             ),
         })
     return queue
@@ -338,10 +338,10 @@ def _build_api_messages(h: list) -> list:
                     f"全てのプロット要素が出揃いました。"
                     f"クライマックスの舞台「{climax_setting}」と着地点「{ending}」に向けて、"
                     f"プレイヤーの行動に応じて物語を一歩進めてください。"
-                    f"物語が自然に完結した場合は、最後の1行に「【エンディング】」とのみ出力すること。"
+                    f"物語が自然に完結した場合は、最後の1行に「[Ending]」とのみ出力すること。"
                 )
             else:
-                injection = "全てのプロット要素が出揃いました。プレイヤーの行動に応じて物語を自然な完結へ向けて一歩進めてください。完結した場合は最後の1行に「【エンディング】」とのみ出力してください。"
+                injection = "全てのプロット要素が出揃いました。プレイヤーの行動に応じて物語を自然な完結へ向けて一歩進めてください。完結した場合は最後の1行に「[Ending]」とのみ出力してください。"
             msgs = [dict(m) for m in msgs]
             for i in reversed(range(len(msgs))):
                 if msgs[i]["role"] == "user":
@@ -366,19 +366,19 @@ def _build_api_messages(h: list) -> list:
                         f"【必須】このターンで物語を完結させてください。"
                         f"プレイヤーが何をしようとも、着地点「{ending}」の結末を迎えます。"
                         f"新たな障壁や展開を追加せず、必ずこのターンで締めくくること。"
-                        f"最後の1行に必ず「【エンディング】」とのみ出力してください。"
+                        f"最後の1行に必ず「[Ending]」とのみ出力してください。"
                     )
                 else:
-                    injection = "【必須】このターンで物語を完結させてください。新たな展開を追加せず、このターンで必ず締めくくること。最後の1行に必ず「【エンディング】」とのみ出力してください。"
+                    injection = "【必須】このターンで物語を完結させてください。新たな展開を追加せず、このターンで必ず締めくくること。最後の1行に必ず「[Ending]」とのみ出力してください。"
             else:
                 # 1ターン目は緩めの再促進
                 if climax_setting and ending:
                     injection = (
                         f"着地点「{ending}」に向けて、物語をクロージングへ導いてください。"
-                        f"完結した場合は最後の1行に「【エンディング】」とのみ出力すること。"
+                        f"完結した場合は最後の1行に「[Ending]」とのみ出力すること。"
                     )
                 else:
-                    injection = "物語をクロージングへ導いてください。完結した場合は最後の1行に「【エンディング】」とのみ出力してください。"
+                    injection = "物語をクロージングへ導いてください。完結した場合は最後の1行に「[Ending]」とのみ出力してください。"
             msgs = [dict(m) for m in msgs]
             for i in reversed(range(len(msgs))):
                 if msgs[i]["role"] == "user":
@@ -408,10 +408,10 @@ def _build_api_messages(h: list) -> list:
                 injection = (
                     f"全ての展開が出揃いました。"
                     f"着地点「{ending}」に向けて物語を完結させてください。"
-                    f"完結した場合は最後の1行に「【エンディング】」とのみ出力すること。"
+                    f"完結した場合は最後の1行に「[Ending]」とのみ出力すること。"
                 ) if ending else (
                     "全ての展開が出揃いました。物語を自然な完結へ向けて一歩進めてください。"
-                    "完結した場合は最後の1行に「【エンディング】」とのみ出力してください。"
+                    "完結した場合は最後の1行に「[Ending]」とのみ出力してください。"
                 )
                 msgs = [dict(m) for m in msgs]
                 for i in reversed(range(len(msgs))):
@@ -431,14 +431,14 @@ def _build_api_messages(h: list) -> list:
                     injection = (
                         f"【必須】このターンで物語を完結させてください。"
                         f"新たな障壁を追加せず、必ずこのターンで締めくくること。"
-                        f"最後の1行に必ず「【エンディング】」とのみ出力してください。"
+                        f"最後の1行に必ず「[Ending]」とのみ出力してください。"
                     )
                 else:
                     injection = (
                         f"着地点「{ending}」に向けて物語をクロージングへ導いてください。"
-                        f"完結した場合は最後の1行に「【エンディング】」とのみ出力すること。"
+                        f"完結した場合は最後の1行に「[Ending]」とのみ出力すること。"
                     ) if ending else (
-                        "物語をクロージングへ導いてください。完結した場合は最後の1行に「【エンディング】」とのみ出力してください。"
+                        "物語をクロージングへ導いてください。完結した場合は最後の1行に「[Ending]」とのみ出力してください。"
                     )
                 msgs = [dict(m) for m in msgs]
                 for i in reversed(range(len(msgs))):
@@ -887,7 +887,8 @@ def _print_history(h: list) -> None:
             action_line = content.split("\n")[0]
             # （ ...） で始まるシステム挿入メッセージは表示しない
             if not action_line.startswith("（"):
-                print(f"\nあなたの行動: {action_line}")
+                label = "Your action" if LANGUAGE == "en" else "あなたの行動"
+                print(f"\n{label}: {action_line}")
 
 def resume_game() -> tuple[list, str, str] | None:
     s, h = save_mod.load()
@@ -1125,8 +1126,10 @@ def run_single_session(plot_mode: str) -> None:
         else:
             if _is_strong() and state.get().get("ending_prompted", False) and \
                     state.get().get("post_prompt_count", 0) >= 3:
-                action = "（物語を終わらせてください）"
-                print(f"\nあなたの行動: {action} [システム強制]")
+                action = "（物語を終わらせてください）" if BATCH_LANGUAGE != "en" else "(Please end the story)"
+                _forced_label = "[System forced]" if BATCH_LANGUAGE == "en" else "[システム強制]"
+                _action_label = "Your action" if BATCH_LANGUAGE == "en" else "あなたの行動"
+                print(f"\n{_action_label}: {action} {_forced_label}")
             else:
                 sys_prompt = PLAYER_SYSTEM_NORMAL if AUTO_PLAY_MODE == "normal" else PLAYER_SYSTEM_DEVIATE
                 _plot = state.get().get("plot", {})
@@ -1143,18 +1146,19 @@ def run_single_session(plot_mode: str) -> None:
                     state.update({"end_reason": "player_error"})
                     save_session_json(h, title)
                     break
-                print(f"\nあなたの行動: {action}")
+                _action_label2 = "Your action" if BATCH_LANGUAGE == "en" else "あなたの行動"
+                print(f"\n{_action_label2}: {action}")
 
         if not action:
             continue
 
-        is_forced_ending = action.startswith("（物語を終わらせてください）")
-        dice_result = dice_mod.judge(action, h) if (state.get().get("use_dice", True) and not is_forced_ending) else None
+        is_forced_ending = action.startswith("（物語を終わらせてください）") or action.startswith("(Please end the story)")
+        dice_result = dice_mod.judge(action, h, language=BATCH_LANGUAGE) if (state.get().get("use_dice", True) and not is_forced_ending) else None
         if dice_result and dice_result.get("error"):
             error_print("Dice roll failed. Continuing without roll." if BATCH_LANGUAGE == "en" else "ダイス判定に失敗しました。判定なしで続行します。")
             dice_result = None
         elif dice_result:
-            dice_mod.display_result(dice_result)
+            dice_mod.display_result(dice_result, language=BATCH_LANGUAGE)
         user_msg = _build_user_msg(action, dice_result)
         h = hist.add_user(h, user_msg)
 
@@ -1376,8 +1380,11 @@ def main():
                 # ending_prompted後、一定ターンでプレイヤー入力を強制終了に切り替え
                 if _is_strong() and state.get().get("ending_prompted", False) and \
                         state.get().get("post_prompt_count", 0) >= 3:
-                    action = "（物語を終わらせてください）"
-                    print(f"\nあなたの行動: {action} [システム強制]")
+                    _lang_auto = state.get().get("language", "ja")
+                    action = "（物語を終わらせてください）" if _lang_auto != "en" else "(Please end the story)"
+                    _forced_sfx = " [System forced]" if _lang_auto == "en" else " [システム強制]"
+                    _act_lbl = "Your action" if _lang_auto == "en" else "あなたの行動"
+                    print(f"\n{_act_lbl}: {action}{_forced_sfx}")
                 else:
                     sys_prompt = PLAYER_SYSTEM_NORMAL if AUTO_PLAY_MODE == "normal" else PLAYER_SYSTEM_DEVIATE
                     # 主人公名をsys_promptに付加（キャラ誤操作防止）
@@ -1395,7 +1402,8 @@ def main():
                         state.update({"end_reason": "player_error"})
                         save_session_json(h, title)
                         break
-                    print(f"\nあなたの行動: {action}")
+                    _act_lbl2 = "Your action" if _lang == "en" else "あなたの行動"
+                    print(f"\n{_act_lbl2}: {action}")
         else:
             _lang = state.get().get("language", "ja")
             if _lang == "en":
@@ -1518,17 +1526,17 @@ def main():
             continue
 
         # ダイス判定（use_diceがTrueの場合のみ。システム強制終了アクションは除外）
-        is_forced_ending = action.startswith("（物語を終わらせてください）")
-        dice_result = dice_mod.judge(action, h) if (state.get().get("use_dice", True) and not is_forced_ending) else None
+        is_forced_ending = action.startswith("（物語を終わらせてください）") or action.startswith("(Please end the story)")
+        _lang = state.get().get("language", "ja")
+        dice_result = dice_mod.judge(action, h, language=_lang) if (state.get().get("use_dice", True) and not is_forced_ending) else None
         if dice_result and dice_result.get("error"):
-            _lang = state.get().get("language", "ja")
             if _lang == "en":
                 error_print("Dice roll failed (API error or JSON parse failure). Continuing without roll.")
             else:
                 error_print("ダイス判定に失敗しました（APIエラーまたはJSON解析失敗）。判定なしで続行します。")
             dice_result = None
         elif dice_result:
-            dice_mod.display_result(dice_result)
+            dice_mod.display_result(dice_result, language=_lang)
         user_msg = _build_user_msg(action, dice_result)
         h = push_user(h, user_msg, pending_failed)
 
