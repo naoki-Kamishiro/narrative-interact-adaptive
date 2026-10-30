@@ -137,7 +137,7 @@ def _validate_and_repair(plot: dict) -> dict:
                     existing = []
                 plot[key] = existing + extracted[key]
                 if DEBUG_MODE:
-                    print(f"[plot修復] {key} を {len(extracted[key])} 件トップレベルに移動しました", file=sys.stderr)
+                    print(f"[plot repair] Moved {len(extracted[key])} {key} item(s) to top level", file=sys.stderr)
 
     # protagonist が文字列など dict でない場合は dict に変換
     if not isinstance(plot.get("protagonist"), dict):
@@ -177,14 +177,14 @@ def _validate_and_repair(plot: dict) -> dict:
         climax["peak"] = climax.get("peak") or final_twist or "物語の転換点"
         plot["climax"] = climax
         if DEBUG_MODE:
-            print("[plot修復] climax が空だったため他フィールドから補完しました", file=sys.stderr)
+            print("[plot repair] climax was empty; filled from other fields", file=sys.stderr)
     if not plot.get("ending"):
         plot["ending"] = ""
         if DEBUG_MODE:
-            print("[plot修復] ending が欠落していたためデフォルト補完しました", file=sys.stderr)
+            print("[plot repair] ending was missing; set to default", file=sys.stderr)
     if not isinstance(plot.get("ending_note"), dict) or not plot["ending_note"]:
         plot["ending_note"] = {"hook_resolution": "", "theme_closure": ""}
         if DEBUG_MODE:
-            print("[plot修復] ending_note が欠落していたためデフォルト補完しました", file=sys.stderr)
+            print("[plot repair] ending_note was missing; set to default", file=sys.stderr)
 
     return plot

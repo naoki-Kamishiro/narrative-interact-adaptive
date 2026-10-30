@@ -169,15 +169,15 @@ def ask(prompt: str) -> str:
         return ""
 
 def call_gm(messages: list, max_retries: int = 1) -> str:
-    reply = chat(messages)
+    _call_lang = LANGUAGE if not AUTO_PLAY_MODE else BATCH_LANGUAGE
+    reply = chat(messages, language=_call_lang)
     # コンテキスト上限はリトライせず即返す
     if reply == "[CONTEXT_LIMIT]":
         return "[CONTEXT_LIMIT]"
     attempt = 0
-    _call_lang = LANGUAGE if not AUTO_PLAY_MODE else BATCH_LANGUAGE
     while (reply.startswith("[ERROR") or not reply.strip()) and attempt < max_retries:
         system_print("Retrying response generation..." if _call_lang == "en" else "応答生成に失敗したため再試行します...")
-        reply = chat(messages)
+        reply = chat(messages, language=_call_lang)
         if reply == "[CONTEXT_LIMIT]":
             return "[CONTEXT_LIMIT]"
         attempt += 1

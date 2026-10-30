@@ -20,22 +20,23 @@ def get_player_client() -> OpenAI:
         _player_client = OpenAI(base_url=PLAYER_URL, api_key=API_KEY)
     return _player_client
 
-def _show_progress(stop_event: threading.Event) -> None:
+def _show_progress(stop_event: threading.Event, language: str = "ja") -> None:
     """生成中にドットを表示するスレッド関数。"""
     import sys
     chars = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
+    label = "Generating" if language == "en" else "生成中"
     i = 0
     while not stop_event.is_set():
-        sys.stdout.write(f"\r生成中 {chars[i % len(chars)]}")
+        sys.stdout.write(f"\r{label} {chars[i % len(chars)]}")
         sys.stdout.flush()
         i += 1
         time.sleep(0.1)
     sys.stdout.write("\r" + " " * 20 + "\r")
     sys.stdout.flush()
 
-def chat(messages: list) -> str:
+def chat(messages: list, language: str = "ja") -> str:
     stop_event = threading.Event()
-    t = threading.Thread(target=_show_progress, args=(stop_event,), daemon=True)
+    t = threading.Thread(target=_show_progress, args=(stop_event, language), daemon=True)
     t.start()
     try:
         client = get_client()
