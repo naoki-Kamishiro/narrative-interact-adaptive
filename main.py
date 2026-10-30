@@ -868,7 +868,7 @@ def ask_gm_character() -> str:
             system_print("1か2を入力してください。")
 
 def ask_language() -> str:
-    """起動時に言語を選択する。戻り値は "ja" または "en"。"""
+    """Select language at startup. Returns "ja" or "en"."""
     global COMMANDS, PLOT_MODE_LABELS, DIFFICULTY_LABELS, EPILOGUE_PROMPT
     print()
     print("Language / 言語:")
@@ -898,10 +898,10 @@ def _is_off() -> bool:
 
 
 def _handle_gm_char_and_turning_point(action: str, h: list) -> None:
-    """GMキャラクターのコメントと転換点による描写強化を処理する。
-    - GMキャラクターが設定されており転換点と判定された場合：コメントを表示
-    - 転換点かつturning_point_triggeredがFalseの場合：描写強化injectionをstateに記録
-    この関数はcall_gm()の前に呼ぶ。
+    """Handle GM character comment and turning-point description enhancement.
+    - If a GM character is set and a turning point is detected: display a comment.
+    - If a turning point and turning_point_triggered is False: record the enhancement injection in state.
+    Call this before call_gm().
     """
     s = state.get()
     gm_character = s.get("gm_character", "none")
@@ -1374,14 +1374,14 @@ def run_single_session(plot_mode: str) -> None:
 def main():
     global AUTO_PLAY_MODE, DEBUG_MODE, BATCH_COUNT, LANGUAGE, BATCH_LANGUAGE, BATCH_GENRES
     if "--help" in sys.argv or "-h" in sys.argv:
-        print("使い方: python main.py [オプション]")
+        print("Usage: python main.py [options]")
         print()
-        print("オプション:")
-        print("  --normal         自動プレイ（通常）")
-        print("  --deviate        自動プレイ（逸脱）")
-        print("  --batch N        N回バッチ実行（--normal または --deviate と併用）")
-        print("  --debug          デバッグ出力を有効化（stderrに出力）")
-        print("  --help, -h       このヘルプを表示")
+        print("Options:")
+        print("  --normal         Auto-play (normal)")
+        print("  --deviate        Auto-play (deviate)")
+        print("  --batch N        Run N sessions in batch (use with --normal or --deviate)")
+        print("  --debug          Enable debug output (to stderr)")
+        print("  --help, -h       Show this help")
         sys.exit(0)
 
     if "--normal" in sys.argv:
@@ -1396,10 +1396,10 @@ def main():
             try:
                 BATCH_COUNT = int(sys.argv[idx + 1])
             except ValueError:
-                print("--batch の引数は整数で指定してください。")
+                print("--batch argument must be an integer.")
                 sys.exit(1)
         else:
-            print("--batch の後に回数を指定してください。例: --batch 5")
+            print("Please specify a count after --batch. Example: --batch 5")
             sys.exit(1)
 
     # Always enable debug in auto-play mode
