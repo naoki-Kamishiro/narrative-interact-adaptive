@@ -3,7 +3,7 @@ import threading
 import time
 from config import LM_STUDIO_URL, API_KEY, MAX_TOKENS, TEMPERATURE
 
-PLAYER_URL = LM_STUDIO_URL  # GMと同じポートを使用（同一モデルでGM・プレイヤー兼用）
+PLAYER_URL = LM_STUDIO_URL  # Same port as GM (single model shared for both GM and player)
 
 _client: OpenAI | None = None
 _player_client: OpenAI | None = None
@@ -21,7 +21,7 @@ def get_player_client() -> OpenAI:
     return _player_client
 
 def _show_progress(stop_event: threading.Event, language: str = "ja") -> None:
-    """生成中にドットを表示するスレッド関数。"""
+    """Thread function that displays a spinner while generation is in progress."""
     import sys
     chars = ["⠋","⠙","⠹","⠸","⠼","⠴","⠦","⠧","⠇","⠏"]
     label = "Generating" if language == "en" else "生成中"
@@ -57,9 +57,10 @@ def chat(messages: list, language: str = "ja") -> str:
         t.join()
 
 def chat_player(gm_response: str, system_prompt: str, recent_actions: list | None = None, language: str = "ja") -> str:
-    """プレイヤーLLMにGM応答を渡して行動を生成する（自動プレイ用）。
-    recent_actions: 直近のプレイヤー行動リスト（ループ抑止用）。
-    language: "ja" or "en"。"""
+    """Pass the GM response to the player LLM and generate a player action (for auto-play).
+    recent_actions: list of recent player actions (used to suppress loops).
+    language: "ja" or "en".
+    """
     user_content = gm_response
     if recent_actions:
         actions_text = "\n".join(f"  - {a}" for a in recent_actions)
@@ -156,23 +157,23 @@ def generate_genre_title(genre: str = "", language: str = "ja") -> dict:
 
 
 def check_deviation(actions: list[str], plot_keywords: list[str]) -> bool:
-    """直近3件のプレイヤー行動が元プロットから大きく逸脱しているか判定する。
-    LLMにyes/noで答えさせる。エラー時はFalseを返す（安全側に倒す）。
+    """Determine whether the last 3 player actions deviate significantly from the original plot.
+    Asks the LLM for a yes/no answer. Returns False on error (safe default).
     """
     if len(actions) < 3:
         return False
     actions_text = "\n".join(f"{i+1}. {a}" for i, a in enumerate(actions))
-    keywords_text = "、".join(plot_keywords) if plot_keywords else "（なし）"
+    keywords_text = ", ".join(plot_keywords) if plot_keywords else "(none)"
     prompt = (
-        f"以下はテキストRPGのプレイヤーの直近3つの行動です。\n\n"
+        f"The following are the last 3 actions of a text RPG player.\n\n"
         f"{actions_text}\n\n"
-        f"このゲームの元の物語の中心要素: {keywords_text}\n\n"
-        f"これらの行動は、元の物語の中心要素から大きく逸脱し、"
-        f"物語が別の方向に進んでいますか？\n"
-        f"「yes」か「no」の1単語のみで答えてください。"
+        f"Core elements of the original story in this game: {keywords_text}\n\n"
+        f"Have these actions deviated significantly from the core elements of the original story, "
+        f"pushing the story in a different direction?\n"
+        f"Answer with a single word: \"yes\" or \"no\"."
     )
     messages = [
-        {"role": "system", "content": "あなたはテキストRPGの進行を補助するシステムです。"},
+        {"role": "system", "content": "You are a system that assists the progression of a text RPG."},
         {"role": "user", "content": prompt},
     ]
     try:
@@ -405,7 +406,7 @@ GM_CHAR_PROMPTS_EN = {
 }
 
 GM_CHAR_LABELS = {
-    "cynical": "シニカル",
+    "cynical": "Cynical",
 }
 
 GM_CHAR_LABELS_EN = {
@@ -414,20 +415,20 @@ GM_CHAR_LABELS_EN = {
 
 
 def generate_gm_char_comment(action: str, recent_history: list[dict], character: str, gm_char_log: list[dict] | None = None, language: str = "ja") -> str:
-    """GMキャラクターの一言コメントを生成する。
+    """Generate a one-liner comment from a GM character.
     character: "cynical"
-    gm_char_log: これまでの全コメント履歴（繰り返し抑止用）
+    gm_char_log: full comment history so far (used to suppress repetition)
     language: "ja" or "en"
-    エラー時は空文字を返す。
+    Returns an empty string on error.
     """
     prompts = GM_CHAR_PROMPTS_EN if language == "en" else GM_CHAR_PROMPTS
     sys_prompt = prompts.get(character)
     if not sys_prompt:
         return ""
-    # 直近3ターンのGM描写を参考として渡す
+    # Pass the last 3 turns of GM narration as context
     gm_msgs = [m["content"][:100] for m in recent_history if m["role"] == "assistant"][-3:]
     context = "\n".join(f"- {t}" for t in gm_msgs) if gm_msgs else ""
-    # これまでの全コメント（繰り返し抑止）
+    # All past comments (for repetition suppression)
     past_comments = ""
     if gm_char_log:
         comments = [entry["comment"] for entry in gm_char_log if "comment" in entry]
@@ -453,9 +454,9 @@ def generate_gm_char_comment(action: str, recent_history: list[dict], character:
             temperature=0.9,
         )
         comment = response.choices[0].message.content.strip()
-        # 複数行になった場合は1行目のみ
+        # If multi-line, keep only the first line
         comment = comment.split("\n")[0].strip()
-        # 長すぎる場合は切り捨て
+        # Truncate if too long
         if len(comment) > 30:
             comment = comment[:30]
         return comment
