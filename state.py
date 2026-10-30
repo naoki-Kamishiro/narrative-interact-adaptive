@@ -1,7 +1,7 @@
 """
-ゲームの現在状態を保持するモジュール。
-フルスナップショット管理。更新は必ずupdate()経由。
-将来的にengine.pyがここを通じて状態を制御する。
+Module that holds the current game state.
+Full-snapshot management; all updates must go through update().
+In the future, engine.py will control state through this module.
 """
 
 _state: dict = {}
