@@ -18,7 +18,7 @@ def sanitize(history: list) -> list:
     sanitized = []
     for msg in other_msgs:
         if sanitized and sanitized[-1]["role"] == msg["role"]:
-            # 同じroleが連続した場合は捨てず連結する（保存済み履歴は変更しない）
+            # Consecutive same-role messages are merged rather than dropped (saved history is not modified)
             sanitized[-1] = {
                 "role": msg["role"],
                 "content": sanitized[-1]["content"] + "\n\n" + msg["content"],
@@ -32,15 +32,15 @@ def build_for_api(history: list) -> list:
 
 def build_for_api_with_beat(history: list, queue: list, ptr: int) -> tuple[list, str | None]:
     """
-    strongモード用: sanitize後にビートを注入してAPI用メッセージを返す。
-    戻り値: (注入済みメッセージリスト, デバッグ情報 or None)
+    For strong mode: sanitize history, inject the current beat, and return the API message list.
+    Returns: (injected message list, debug string or None)
     """
     msgs = sanitize(history)
     return beat_mod.inject(msgs, queue, ptr)
 
 
 def rebuild_system(history: list, plot: dict, plot_mode: str = "off", genre: str = "", language: str = "ja") -> list:
-    """ロード時にシステムプロンプトをプロットで再構築する。"""
+    """Rebuild the system prompt with the plot on session load."""
     new_system = {"role": "system", "content": build_system_prompt(plot, plot_mode, genre, language)}
     other_msgs = [m for m in history if m["role"] != "system"]
     return [new_system] + other_msgs
