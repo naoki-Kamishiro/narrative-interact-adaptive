@@ -189,49 +189,82 @@ def check_deviation(actions: list[str], plot_keywords: list[str]) -> bool:
         return False
 
 
-def regenerate_plot(recent_history: list[dict], genre: str) -> str:
-    """直近の会話履歴をもとに新しいプロットをJSONで生成する（adaptive用）。
-    recent_history: 直近Nターン分のuser/assistantメッセージ（systemは除く）。
-    genre: 元のジャンル（参考情報として渡す。新ジャンルになってもよい）。
-    戻り値: JSON文字列（パース失敗の場合は空文字列）。
+def regenerate_plot(recent_history: list[dict], genre: str, language: str = "ja") -> str:
+    """Generate a new plot JSON from recent conversation history (adaptive mode).
+    recent_history: user/assistant messages from the last N turns (no system messages).
+    genre: original genre (passed as reference; the new plot may use a different genre).
+    language: "en" or "ja".
+    Returns: JSON string (empty string on parse failure).
     """
-    # 履歴を読みやすい形式に変換
+    # Convert history to readable format
     history_text = ""
     for m in recent_history:
         role = m.get("role", "")
         content = m.get("content", "")
         if role == "user":
-            # ダイス結果タグを除いて1行目のみ
+            # First line only, excluding dice result tags
             first_line = content.split("\n")[0].strip()
-            if first_line and not first_line.startswith("（"):
-                history_text += f"プレイヤー: {first_line}\n"
+            if language == "en":
+                if first_line and not first_line.startswith("("):
+                    history_text += f"Player: {first_line}\n"
+            else:
+                if first_line and not first_line.startswith("（"):
+                    history_text += f"プレイヤー: {first_line}\n"
         elif role == "assistant":
-            # 長い場合は最初の200文字
+            # Truncate long content
             short = content[:200].replace("\n", " ")
-            history_text += f"GM: {short}\n"
+            if language == "en":
+                history_text += f"GM: {short}\n"
+            else:
+                history_text += f"GM: {short}\n"
 
-    prompt = (
-        f"以下は進行中のテキストRPGの直近の展開です。\n\n"
-        f"{history_text}\n\n"
-        f"この展開を踏まえて、これから10ターン程度で完結できる物語の着地点を設計してください。\n"
-        f"ジャンルは変わっても構いません（現在の流れに合わせてください）。\n"
-        f"以下のJSON形式のみで出力してください。説明や前置きは不要です。\n"
-        f"コードブロック（```）を使わないこと。\n\n"
-        f'{{\n'
-        f'  "new_genre": "現在の流れに合ったジャンル名",\n'
-        f'  "protagonist_goal": "主人公が今向かっている目標（具体的な行動・状況で）",\n'
-        f'  "key_npc": "この物語で重要になるNPC名と役割",\n'
-        f'  "climax_situation": "クライマックスで起きる具体的な出来事（場所・人物・行動）",\n'
-        f'  "ending_scene": "最後の場面（主人公・人物・場所・動作のみ。動機語・感情語は禁止）",\n'
-        f'  "beats": [\n'
-        f'    {{"description": "序盤の展開（1〜2文）", "timing": "序盤"}},\n'
-        f'    {{"description": "中盤の転換点（1〜2文）", "timing": "中盤"}},\n'
-        f'    {{"description": "クライマックスへの布石（1〜2文）", "timing": "終盤"}}\n'
-        f'  ]\n'
-        f'}}'
-    )
+    if language == "en":
+        prompt = (
+            f"The following is the recent progression of an ongoing text RPG.\n\n"
+            f"{history_text}\n\n"
+            f"Based on this progression, design a story ending that can be reached in about 10 more turns.\n"
+            f"The genre may change (adapt to the current flow).\n"
+            f"Output only the following JSON format. No explanation or preamble.\n"
+            f"Do not use code blocks (```).\n\n"
+            f'{{\n'
+            f'  "new_genre": "Genre name that fits the current flow",\n'
+            f'  "protagonist_goal": "The goal the protagonist is now pursuing (in concrete actions/situations)",\n'
+            f'  "key_npc": "Name and role of the NPC who will be important in this story",\n'
+            f'  "climax_situation": "The specific event that happens at the climax (location, characters, action)",\n'
+            f'  "ending_scene": "The final scene (protagonist, characters, location, action only. No motivational or emotional words)",\n'
+            f'  "beats": [\n'
+            f'    {{"description": "Early development (1-2 sentences)", "timing": "early"}},\n'
+            f'    {{"description": "Mid-story turning point (1-2 sentences)", "timing": "mid"}},\n'
+            f'    {{"description": "Setup leading to climax (1-2 sentences)", "timing": "pre-climax"}}\n'
+            f'  ]\n'
+            f'}}'
+        )
+        sys_content = "You are a story designer for fiction. Output JSON only."
+    else:
+        prompt = (
+            f"以下は進行中のテキストRPGの直近の展開です。\n\n"
+            f"{history_text}\n\n"
+            f"この展開を踏まえて、これから10ターン程度で完結できる物語の着地点を設計してください。\n"
+            f"ジャンルは変わっても構いません（現在の流れに合わせてください）。\n"
+            f"以下のJSON形式のみで出力してください。説明や前置きは不要です。\n"
+            f"コードブロック（```）を使わないこと。\n\n"
+            f'{{\n'
+            f'  "new_genre": "現在の流れに合ったジャンル名",\n'
+            f'  "protagonist_goal": "主人公が今向かっている目標（具体的な行動・状況で）",\n'
+            f'  "key_npc": "この物語で重要になるNPC名と役割",\n'
+            f'  "climax_situation": "クライマックスで起きる具体的な出来事（場所・人物・行動）",\n'
+            f'  "ending_scene": "最後の場面（主人公・人物・場所・動作のみ。動機語・感情語は禁止）",\n'
+            f'  "beats": [\n'
+            f'    {{"description": "序盤の展開（1〜2文）", "timing": "early"}},\n'
+            f'    {{"description": "中盤の転換点（1〜2文）", "timing": "mid"}},\n'
+            f'    {{"description": "クライマックスへの布石（1〜2文）", "timing": "pre-climax"}}\n'
+            f'  ]\n'
+            f'}}'
+        )
+        sys_content = "あなたは小説の物語設計者です。JSONのみ出力します。"
+
     messages = [
-        {"role": "system", "content": "あなたは小説の物語設計者です。JSONのみ出力します。"},
+        {"role": "system", "content": sys_content},
         {"role": "user", "content": prompt},
     ]
     import json as _json

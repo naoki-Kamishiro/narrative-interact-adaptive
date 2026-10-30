@@ -240,15 +240,15 @@ def _do_adaptive_replot(h: list) -> None:
     genre = s.get("genre", "")
 
     if DEBUG_MODE:
-        print("[ADAPTIVE] 逸脱を検出。プロット再生成を開始します。", file=sys.stderr)
+        print("[ADAPTIVE] Deviation detected. Starting plot regeneration.", file=sys.stderr)
 
-    # 直近10ターン分の会話履歴を渡す（systemは除く）
+    # Pass the last 10 turns of conversation history (no system messages)
     recent = [m for m in h if m["role"] in ("user", "assistant")][-20:]
-    new_plot = regenerate_plot(recent, genre)
+    new_plot = regenerate_plot(recent, genre, language=LANGUAGE)
 
     if not new_plot:
         if DEBUG_MODE:
-            print("[ADAPTIVE] プロット再生成に失敗しました。そのまま続行します。", file=sys.stderr)
+            print("[ADAPTIVE] Plot regeneration failed. Continuing without reploting.", file=sys.stderr)
         peak = s.get("deviation_count", 0)
         state.update({"adaptive_replotted": True, "deviation_count": 0, "peak_deviation_count": peak})
         return
@@ -259,7 +259,7 @@ def _do_adaptive_replot(h: list) -> None:
 
     new_genre = new_plot.get("new_genre", genre)
 
-    # 新プロットをstateに保存
+    # Save new plot to state
     peak = s.get("deviation_count", 0)
     state.update({
         "adaptive_replotted": True,
@@ -267,14 +267,14 @@ def _do_adaptive_replot(h: list) -> None:
         "adaptive_new_genre": new_genre,
         "deviation_count": 0,
         "peak_deviation_count": peak,
-        # beat制御: 新プロットからシンプルなビートキューを構築
+        # Beat control: build a simple beat queue from the new plot
         "beat_queue": _build_adaptive_beat_queue(new_plot),
         "beat_ptr": 0,
         "ending_suppressed": False,
         "ending_prompted": False,
     })
 
-    # システムプロンプトを新プロット用に差し替える（history先頭のsystemメッセージ）
+    # Replace system prompt with one for the new plot (system message at start of history)
     new_sys_prompt = build_adaptive_replot_system_prompt(new_plot, new_genre)
     for i, m in enumerate(h):
         if m["role"] == "system":
@@ -282,11 +282,11 @@ def _do_adaptive_replot(h: list) -> None:
             break
 
     if DEBUG_MODE:
-        print(f"[ADAPTIVE] 新しい着地点を設定しました: {new_plot.get('ending_scene', '')[:40]}...", file=sys.stderr)
+        print(f"[ADAPTIVE] New ending set: {new_plot.get('ending_scene', '')[:40]}...", file=sys.stderr)
 
 
 def _build_adaptive_beat_queue(new_plot: dict) -> list:
-    """再生成プロットからシンプルなビートキューを構築する。"""
+    """Build a simple beat queue from a regenerated plot."""
     beats = new_plot.get("beats", [])
     queue = []
     for i, b in enumerate(beats):
@@ -296,28 +296,44 @@ def _build_adaptive_beat_queue(new_plot: dict) -> list:
         timing = b.get("timing", "")
         if not desc:
             continue
+        if LANGUAGE == "en":
+            injection_text = (
+                f"(GM guidance: advance the scene so it naturally leads to the development: \"{desc}\". "
+                f"Always accept the player's action.)"
+            )
+        else:
+            injection_text = (
+                f"（GMへの誘導: 「{desc}」という展開に自然につながるよう場面を進めること。"
+                f"ただしプレイヤーの行動は必ず受理すること。）"
+            )
         queue.append({
             "id": f"adaptive_beat_{i}",
             "description": desc,
             "timing": timing,
             "done": False,
-            "injection": (
-                f"（GMへの誘導: 「{desc}」という展開に自然につながるよう場面を進めること。"
-                f"ただしプレイヤーの行動は必ず受理すること。）"
-            ),
+            "injection": injection_text,
         })
-    # 着地点をファイナルビートとして追加
+    # Add the ending scene as the final beat
     ending = new_plot.get("ending_scene", "")
     if ending:
+        if LANGUAGE == "en":
+            ending_injection = (
+                f"(GM scene instruction: bring the story to its conclusion: \"{ending}\". "
+                f"When the story is complete, output \"[Ending]\" alone on the final line.)"
+            )
+            ending_timing = "climax"
+        else:
+            ending_injection = (
+                f"（GMへの場面指示: 着地点「{ending}」の結末を迎えてください。"
+                f"物語が完結した場合は最後の1行に「[Ending]」とのみ出力すること。）"
+            )
+            ending_timing = "エンディング"
         queue.append({
             "id": "adaptive_ending",
             "description": ending,
-            "timing": "エンディング",
+            "timing": ending_timing,
             "done": False,
-            "injection": (
-                f"（GMへの場面指示: 着地点「{ending}」の結末を迎えてください。"
-                f"物語が完結した場合は最後の1行に「[Ending]」とのみ出力すること。）"
-            ),
+            "injection": ending_injection,
         })
     return queue
 
