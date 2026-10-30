@@ -378,10 +378,10 @@ def generate_gm_char_comment(action: str, recent_history: list[dict], character:
         return ""
 
 
-def chat_json(messages: list) -> str:
-    """JSON出力専用。プロット生成など内部処理用。"""
+def chat_json(messages: list, language: str = "ja") -> str:
+    """JSON-output only. For internal processing such as plot generation."""
     stop_event = threading.Event()
-    t = threading.Thread(target=_show_progress, args=(stop_event,), daemon=True)
+    t = threading.Thread(target=_show_progress, args=(stop_event, language), daemon=True)
     t.start()
     try:
         client = get_client()

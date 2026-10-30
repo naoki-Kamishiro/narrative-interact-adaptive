@@ -25,7 +25,7 @@ def generate(genre: str, title: str, language: str = "ja") -> dict:
         {"role": "user",   "content": build_plot_message(genre, title)},
     ]
     for attempt in range(1, MAX_RETRIES + 1):
-        raw = chat_json(messages)
+        raw = chat_json(messages, language=language)
         result = _parse(raw, language=language)
         if result and all(result.get(k) for k in ("ending", "protagonist", "characters", "climax")):
             if language == "en":
