@@ -813,7 +813,7 @@ def _handle_gm_char_and_turning_point(action: str, h: list) -> None:
         is_turning_point = s.get("beat_just_advanced", False)
     elif is_llm_judge:
         # improv / adaptive再生成前: 毎ターンLLMで判定
-        is_turning_point = check_turning_point(h, action)
+        is_turning_point = check_turning_point(h, action, language=LANGUAGE)
         if DEBUG_MODE and is_turning_point:
             print("[TURNING] turning point detected (llm judge)", file=sys.stderr)
 
@@ -902,7 +902,7 @@ def start_new_game() -> tuple[list, str, str]:
     # 主人公名を表示（improvは開始シーンから抽出、他モードはプロットから取得）
     if not reply.startswith("[ERROR"):
         if plot_mode == "improv":
-            improv_name = extract_protagonist_name(reply)
+            improv_name = extract_protagonist_name(reply, language=LANGUAGE)
             if improv_name:
                 if LANGUAGE == "en":
                     print(f"You are {improv_name}. Your story begins now.")

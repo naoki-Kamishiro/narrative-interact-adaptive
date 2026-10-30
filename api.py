@@ -287,19 +287,33 @@ def regenerate_plot(recent_history: list[dict], genre: str, language: str = "ja"
         return {}
 
 
-def extract_protagonist_name(opening_scene: str) -> str:
-    """improvモード用: GMが生成した開始シーンから主人公名を抽出する。
-    名前が不明な場合は空文字を返す。
+def extract_protagonist_name(opening_scene: str, language: str = "ja") -> str:
+    """Extract the protagonist's name from the GM-generated opening scene (improv mode).
+    Returns a fallback name if the name is not explicit.
     """
-    prompt = (
-        f"以下はテキストRPGの冒頭シーンです。\n\n"
-        f"{opening_scene}\n\n"
-        f"このシーンでプレイヤーが操作する主人公の名前を1つだけ答えてください。\n"
-        f"名前が明示されていない場合は「主人公」と答えてください。\n"
-        f"名前のみを出力してください。説明・句読点・括弧は不要です。"
-    )
+    if language == "en":
+        prompt = (
+            f"The following is the opening scene of a text RPG.\n\n"
+            f"{opening_scene}\n\n"
+            f"What is the name of the protagonist the player controls in this scene?\n"
+            f"Answer with a single name only.\n"
+            f"If no name is explicitly given, answer with \"Protagonist\".\n"
+            f"Output the name only. No explanation, punctuation, or brackets."
+        )
+        sys_content = "You are an assistant that identifies characters in fiction."
+        fallback = "Protagonist"
+    else:
+        prompt = (
+            f"以下はテキストRPGの冒頭シーンです。\n\n"
+            f"{opening_scene}\n\n"
+            f"このシーンでプレイヤーが操作する主人公の名前を1つだけ答えてください。\n"
+            f"名前が明示されていない場合は「主人公」と答えてください。\n"
+            f"名前のみを出力してください。説明・句読点・括弧は不要です。"
+        )
+        sys_content = "あなたは小説の登場人物を識別するアシスタントです。"
+        fallback = "主人公"
     messages = [
-        {"role": "system", "content": "あなたは小説の登場人物を識別するアシスタントです。"},
+        {"role": "system", "content": sys_content},
         {"role": "user", "content": prompt},
     ]
     try:
@@ -311,35 +325,53 @@ def extract_protagonist_name(opening_scene: str) -> str:
             temperature=0.0,
         )
         name = response.choices[0].message.content.strip()
-        # 余分な記号・改行を除去
+        # Strip extraneous symbols and newlines
         import re as _re
         name = _re.sub(r'[「」『』【】\(\)（）\n]', '', name).strip()
-        return name if name else ""
+        return name if name else fallback
     except Exception:
-        return ""
+        return fallback
 
 
-def check_turning_point(recent_history: list[dict], action: str) -> bool:
-    """improvモード用: 直近の履歴とプレイヤー行動が物語の大きな転換点かを判定する。
-    LLMにyes/noで答えさせる。エラー時はFalseを返す（安全側に倒す）。
+def check_turning_point(recent_history: list[dict], action: str, language: str = "ja") -> bool:
+    """Determine whether the player's action is a major turning point in the story (improv mode).
+    Asks the LLM for a yes/no answer. Returns False on error (safe default).
     """
-    # 直近5ターン分のassistantメッセージ（GM描写）を取得
+    # Get the last 5 turns of GM descriptions (assistant messages)
     gm_msgs = [m["content"][:300] for m in recent_history if m["role"] == "assistant"][-5:]
-    history_text = "\n".join(f"- {t}" for t in gm_msgs) if gm_msgs else "（なし）"
-    prompt = (
-        f"以下はテキストRPGの直近のGM描写です。\n\n"
-        f"{history_text}\n\n"
-        f"プレイヤーの行動: {action}\n\n"
-        f"このプレイヤーの行動が、物語全体を通じて最も重要な瞬間の一つですか？\n"
-        f"以下のいずれかに該当する場合のみ「yes」：\n"
-        f"・登場人物の関係・状況が不可逆に変化する\n"
-        f"・隠されていた事実・真実が明らかになる\n"
-        f"・物語の方向性を決定的に変える選択・衝突・結末が起きる\n"
-        f"それ以外（探索・移動・会話・情報収集・日常的な行動・小さな成否）は「no」。\n"
-        f"「yes」か「no」の1単語のみで答えてください。"
-    )
+    if language == "en":
+        history_text = "\n".join(f"- {t}" for t in gm_msgs) if gm_msgs else "(none)"
+        prompt = (
+            f"The following are recent GM descriptions from a text RPG.\n\n"
+            f"{history_text}\n\n"
+            f"Player's action: {action}\n\n"
+            f"Is this player's action one of the most important moments in the entire story?\n"
+            f"Answer \"yes\" ONLY if one of the following applies:\n"
+            f"- A character relationship or situation changes irreversibly\n"
+            f"- A hidden fact or truth is revealed\n"
+            f"- A choice, confrontation, or outcome decisively changes the direction of the story\n"
+            f"For anything else (exploration, movement, conversation, information gathering, "
+            f"everyday actions, minor success/failure), answer \"no\".\n"
+            f"Answer with a single word: \"yes\" or \"no\"."
+        )
+        sys_content = "You are a system that assists the progression of a text RPG."
+    else:
+        history_text = "\n".join(f"- {t}" for t in gm_msgs) if gm_msgs else "（なし）"
+        prompt = (
+            f"以下はテキストRPGの直近のGM描写です。\n\n"
+            f"{history_text}\n\n"
+            f"プレイヤーの行動: {action}\n\n"
+            f"このプレイヤーの行動が、物語全体を通じて最も重要な瞬間の一つですか？\n"
+            f"以下のいずれかに該当する場合のみ「yes」：\n"
+            f"・登場人物の関係・状況が不可逆に変化する\n"
+            f"・隠されていた事実・真実が明らかになる\n"
+            f"・物語の方向性を決定的に変える選択・衝突・結末が起きる\n"
+            f"それ以外（探索・移動・会話・情報収集・日常的な行動・小さな成否）は「no」。\n"
+            f"「yes」か「no」の1単語のみで答えてください。"
+        )
+        sys_content = "あなたはテキストRPGの進行を補助するシステムです。"
     messages = [
-        {"role": "system", "content": "あなたはテキストRPGの進行を補助するシステムです。"},
+        {"role": "system", "content": sys_content},
         {"role": "user", "content": prompt},
     ]
     try:
