@@ -1,27 +1,32 @@
 """
-ビート注入モジュール（strongモード専用）。
-プロットのビート待ち行列を管理し、毎ターン1ビートをAPIコピーに注入する。
+Beat injection module (used by strong mode and off mode).
+Manages the plot beat queue and injects one beat per turn into the API message copy.
 """
 
 import re
 import sys
 
-# デバッグ出力フラグ（main.pyから beat_mod.DEBUG_MODE = True で有効化）
+# Debug output flag (enabled from main.py via beat_mod.DEBUG_MODE = True)
 DEBUG_MODE: bool = False
 
 def _debug(*args) -> None:
     if DEBUG_MODE:
         print(*args, file=sys.stderr)
 
-# timingのソート辞書（表記ゆれ吸収）
+# Timing sort dict (absorbs label variations)
 TIMING_ORDER = {
+    "early": 0,
+    "mid": 1,
+    "pre-climax": 2,
+    "climax": 3,
+    # Japanese fallbacks for plots generated in ja mode
     "序盤": 0,
     "中盤": 1,
     "クライマックス直前": 2,
     "クライマックス": 3,
 }
 
-# 二次ソート: ビート種別の優先順
+# Secondary sort: beat type priority
 TYPE_ORDER = {
     "misconception": 0,
     "failure": 1,
@@ -30,7 +35,7 @@ TYPE_ORDER = {
     "character": 4,
 }
 
-# 注入文テンプレート（種別ごと）
+# Injection text templates (Japanese, for ja mode)
 _TEMPLATES = {
     "misconception": "今回の描写で、現在いる場所で{content}という出来事を起こすこと。ただし内面の変化ではなく外から観察できる出来事として描写すること。事実はNPCが台詞で言ってよいが、その事実が主人公にとって何を意味するかはNPCも地の文も言わないこと。",
     "failure":       "今回の描写で、現在いる場所で{content}という状況を発生させること。プレイヤーの行動とは別に世界の側から引き起こすこと。",
@@ -40,7 +45,7 @@ _TEMPLATES = {
 }
 
 def build_queue(plot: dict) -> list:
-    """プロットからビート待ち行列を生成する。"""
+    """Build a beat queue from the plot dict."""
     queue = []
 
     for i, item in enumerate(plot.get("misconceptions", [])):
@@ -50,7 +55,7 @@ def build_queue(plot: dict) -> list:
             "src": "misconceptions",
             "src_idx": i,
             "type": "misconception",
-            "timing": item.get("timing", "序盤"),
+            "timing": item.get("timing", "early"),
             "content": item.get("content", ""),
             "done": False,
         })
@@ -62,7 +67,7 @@ def build_queue(plot: dict) -> list:
             "src": "failures",
             "src_idx": i,
             "type": "failure",
-            "timing": item.get("timing", "序盤"),
+            "timing": item.get("timing", "early"),
             "content": item.get("content", ""),
             "done": False,
         })
@@ -74,7 +79,7 @@ def build_queue(plot: dict) -> list:
             "src": "choices",
             "src_idx": i,
             "type": "choice",
-            "timing": item.get("timing", "中盤"),
+            "timing": item.get("timing", "mid"),
             "content": item.get("description", ""),
             "cost": item.get("cost", ""),
             "done": False,
@@ -87,19 +92,19 @@ def build_queue(plot: dict) -> list:
             "src": "twists",
             "src_idx": i,
             "type": "twist",
-            "timing": item.get("timing", "中盤"),
+            "timing": item.get("timing", "mid"),
             "content": item.get("content", ""),
             "done": False,
         })
 
-    # キャラクター登場ビート（charactersから生成）
+    # Character appearance beats (generated from characters list)
     protagonist_raw = plot.get("protagonist", {})
     protagonist_name = protagonist_raw.get("name", "") if isinstance(protagonist_raw, dict) else ""
     for i, c in enumerate(plot.get("characters", [])):
         if not isinstance(c, dict):
             continue
-        # {"name": "...", "role": "..."} 形式を優先し、
-        # {"sword_master": "説明文"} のような異形式はフォールバックで解釈する
+        # Prefer {"name": "...", "role": "..."} format;
+        # fall back to {"sword_master": "description"} style keys
         if "name" in c:
             name = c.get("name", "").strip(": ").strip()
         else:
@@ -110,12 +115,12 @@ def build_queue(plot: dict) -> list:
                 "src": "characters",
                 "src_idx": i,
                 "type": "character",
-                "timing": "序盤",
+                "timing": "early",
                 "name": name,
                 "done": False,
             })
 
-    # ソート: timing → type
+    # Sort: timing → type
     queue.sort(key=lambda b: (
         TIMING_ORDER.get(b["timing"], 99),
         TYPE_ORDER.get(b["type"], 99),
@@ -124,7 +129,7 @@ def build_queue(plot: dict) -> list:
     return queue
 
 
-# 注入文テンプレート（英語版）
+# Injection text templates (English)
 _TEMPLATES_EN = {
     "misconception": "In this turn, cause the following event to occur at the current location: {content}. Depict it as an externally observable event, not an internal change. NPCs may state the fact in dialogue, but neither NPCs nor narration should say what it means to the protagonist.",
     "failure":       "In this turn, cause the following situation to arise at the current location: {content}. Trigger it as a world-side event, independent of the player's action.",
@@ -135,8 +140,8 @@ _TEMPLATES_EN = {
 
 
 def make_injection(beat: dict, language: str = "ja") -> str:
-    """ビートから注入文を生成する。"""
-    # adaptive beat は独自の injection 文を持つ
+    """Generate injection text from a beat entry."""
+    # Adaptive beats carry their own injection text
     if "injection" in beat:
         return beat["injection"]
     t = beat["type"]
@@ -151,7 +156,7 @@ def make_injection(beat: dict, language: str = "ja") -> str:
 
 
 def get_current_beat(queue: list, ptr: int) -> dict | None:
-    """現在のポインタが指すビートを返す。キューが尽きたらNone。"""
+    """Return the beat at the current pointer, skipping done entries. Returns None when queue is exhausted."""
     while ptr < len(queue):
         beat = queue[ptr]
         if not beat["done"]:
@@ -162,8 +167,8 @@ def get_current_beat(queue: list, ptr: int) -> dict | None:
 
 def inject(messages: list, queue: list, ptr: int, language: str = "ja") -> tuple[list, str | None]:
     """
-    API送信用メッセージリストの最後のuserメッセージに注入文を付加する。
-    戻り値: (注入後メッセージリスト, 注入したビートのデバッグ情報 or None)
+    Append beat injection text to the last user message in the API message list.
+    Returns: (modified message list, debug string for the injected beat or None)
     """
     beat = get_current_beat(queue, ptr)
     if beat is None:
@@ -173,7 +178,7 @@ def inject(messages: list, queue: list, ptr: int, language: str = "ja") -> tuple
     if not injection:
         return messages, None
 
-    # コピーを作って最後のuserメッセージに付加（元のhistoryは変更しない）
+    # Work on a copy so the original history is not mutated
     msgs = [dict(m) for m in messages]
     for i in reversed(range(len(msgs))):
         if msgs[i]["role"] == "user":
@@ -190,14 +195,14 @@ def inject(messages: list, queue: list, ptr: int, language: str = "ja") -> tuple
 
 
 def detect_character(response: str, name: str) -> bool:
-    """GM応答にキャラクター名が含まれるか照合する。
-    複合表記（・／（）／または／()）を分割し、各トークンでも照合する。
-    いずれかがresponseに含まれればTrue。
+    """Check whether a character name appears in the GM response.
+    Splits composite names (・／ / または / or / parenthetical) and tests each token.
+    Returns True if any token is found in the response.
     """
     if name in response:
         return True
-    # 区切り文字で分割してトークンを取り出す
-    # 対象: ・ / （〜） / (〜) / または / or
+    # Split on delimiters and strip parenthetical alternatives
+    # Targets: ・ / （〜） / (〜) / または / or
     tokens = re.split(r'[・／/\s]|または|or|\(.*?\)|（.*?）', name)
     for token in tokens:
         token = token.strip()
@@ -208,15 +213,16 @@ def detect_character(response: str, name: str) -> bool:
 
 def advance(queue: list, ptr: int, response: str, language: str = "ja") -> tuple[list, int]:
     """
-    現在ビートが描写されたか確認し、ポインタを進める。
-    characterビートは名前照合で確認（ENモードはtrust-advance）。それ以外は1回注入で信頼して進める。
-    戻り値: (更新後queue, 新ptr)
+    Check whether the current beat was depicted and advance the pointer.
+    Character beats are verified by name matching (EN mode uses trust-advance).
+    Event beats are trusted after a single injection.
+    Returns: (updated queue, new ptr)
 
-    注意: get_current_beat() はdone済みをスキップして最初のundoneビートを返す。
-    advance() も同じロジックで対象インデックスを特定し、queue[ptr]ではなく
-    実際に注入されたビートのインデックスをdoneにする。
+    Note: get_current_beat() skips done entries and returns the first undone beat.
+    advance() uses the same logic to find the actual injected beat index and marks
+    that index done rather than blindly using queue[ptr].
     """
-    # 実際に注入されたビートのインデックスを特定する
+    # Locate the actual index of the injected beat
     actual_idx = ptr
     while actual_idx < len(queue) and queue[actual_idx]["done"]:
         actual_idx += 1
@@ -228,8 +234,8 @@ def advance(queue: list, ptr: int, response: str, language: str = "ja") -> tuple
 
     if beat.get("type") == "character":
         name = beat.get("name", "")
-        # ENモードはGMが英語で出力するため日本語名の照合が機能しない。
-        # 1回注入で信頼して進める（trust-advance）。
+        # In EN mode the GM outputs English, so Japanese name matching is unreliable.
+        # Use trust-advance: mark done after a single injection.
         if language == "en":
             _debug(f"[BEAT] EN mode: trust-advance character beat '{name}'")
             queue[actual_idx]["done"] = True
@@ -238,22 +244,22 @@ def advance(queue: list, ptr: int, response: str, language: str = "ja") -> tuple
             queue[actual_idx]["done"] = True
             return queue, actual_idx + 1
         else:
-            # 未検出: doneのまま保留、次ターンも再注入
+            # Not detected: keep pending and re-inject next turn
             _debug(f"[BEAT] character '{name}' not detected, re-injecting next turn")
             return queue, ptr
     else:
-        # 出来事系は1回注入で信頼して進める
+        # Event beats: trust and advance after a single injection
         queue[actual_idx]["done"] = True
         return queue, actual_idx + 1
 
 
 def filter_output(response: str) -> str:
-    """GM出力から全角括弧のみの段落（GMの判断理由漏れ）を除去する。"""
+    """Remove full-width parenthetical-only lines from GM output (leaked GM reasoning)."""
     lines = response.split("\n")
     filtered = []
     for line in lines:
         stripped = line.strip()
-        # （...）だけの行を除去
+        # Remove lines that consist solely of （...）
         if re.fullmatch(r'（[^）]*）', stripped):
             continue
         filtered.append(line)
@@ -262,19 +268,19 @@ def filter_output(response: str) -> str:
 
 def handle_ending_suppression(queue: list, ptr: int) -> tuple[list, int, bool]:
     """
-    【エンディング】が早出しされた場合の処理。
-    未登場キャラクタービートのみ残し、それ以外を破棄。
-    抑止は1回限り（ending_suppressedフラグはstate側で管理）。
-    戻り値: (更新後queue, 新ptr, 抑止したか)
+    Handle an early 【エンディング】 / [ENDING] tag from the GM.
+    Keeps only pending character beats; discards everything else.
+    Suppression is one-time (ending_suppressed flag is managed in state).
+    Returns: (updated queue, new ptr, suppressed?)
     """
-    # 未完了のcharacterビートだけ抽出
+    # Collect pending character beats
     pending_chars = [b for b in queue[ptr:] if b.get("type") == "character" and not b["done"]]
 
     if not pending_chars:
-        # 注入するものがない: エンディングを通す
+        # Nothing left to inject: let the ending through
         return queue, ptr, False
 
-    # characterビートだけを残し、残りは破棄（done=Trueにして読み飛ばす）
+    # Keep only character beats; discard the rest by marking them done
     for i in range(ptr, len(queue)):
         if queue[i].get("type") != "character":
             queue[i]["done"] = True
