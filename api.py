@@ -90,29 +90,49 @@ def chat_player(gm_response: str, system_prompt: str, recent_actions: list | Non
         return f"[ERROR: {e}]"
 
 
-def generate_genre_title(genre: str = "") -> dict:
-    """バッチモード用: LLMにタイトルを生成させる。
-    genre: ジャンル（指定された場合はそのジャンルのタイトルのみ生成）。
-    戻り値: {"genre": "...", "title": "..."} または {"error": "..."}
+def generate_genre_title(genre: str = "", language: str = "ja") -> dict:
+    """Batch mode: generate a title (and optionally genre) via LLM.
+    genre: genre string (if provided, only the title is generated).
+    Returns: {"genre": "...", "title": "..."} or {"error": "..."}
     """
-    if genre:
-        prompt = (
-            f"インタラクティブフィクション（テキストRPG）のタイトルを1つ考えてください。\n"
-            f"ジャンル：{genre}\n"
-            "タイトルは物語の雰囲気を持つ短い日本語タイトルにしてください。\n"
-            "以下のJSON形式のみで出力してください。説明や前置きは不要です。\n"
-            f'{{"genre": "{genre}", "title": "タイトル"}}'
-        )
+    if language == "en":
+        if genre:
+            prompt = (
+                f"Come up with one title for an interactive fiction (text RPG).\n"
+                f"Genre: {genre}\n"
+                "The title should be a short English title that captures the mood of the story.\n"
+                "Output only the following JSON format. No explanation or preamble.\n"
+                f'{{"genre": "{genre}", "title": "Your Title Here"}}'
+            )
+        else:
+            prompt = (
+                "Come up with one genre and title for an interactive fiction (text RPG).\n"
+                "Genre examples: Mystery, Fantasy, Horror, Sci-Fi, Slice of Life, Historical, Ensemble Drama, etc.\n"
+                "The title should be a short English title that captures the mood of the story.\n"
+                "Output only the following JSON format. No explanation or preamble.\n"
+                '{"genre": "GenreName", "title": "Your Title Here"}'
+            )
+        sys_content = "You are an assistant that proposes creative fiction ideas."
     else:
-        prompt = (
-            "インタラクティブフィクション（テキストRPG）のジャンルとタイトルを1つ考えてください。\n"
-            "ジャンルの例：ミステリー、ファンタジー、ホラー、SF、日常、時代劇、群像劇など。\n"
-            "タイトルは物語の雰囲気を持つ短い日本語タイトルにしてください。\n"
-            "以下のJSON形式のみで出力してください。説明や前置きは不要です。\n"
-            '{"genre": "ジャンル名", "title": "タイトル"}'
-        )
+        if genre:
+            prompt = (
+                f"インタラクティブフィクション（テキストRPG）のタイトルを1つ考えてください。\n"
+                f"ジャンル：{genre}\n"
+                "タイトルは物語の雰囲気を持つ短い日本語タイトルにしてください。\n"
+                "以下のJSON形式のみで出力してください。説明や前置きは不要です。\n"
+                f'{{"genre": "{genre}", "title": "タイトル"}}'
+            )
+        else:
+            prompt = (
+                "インタラクティブフィクション（テキストRPG）のジャンルとタイトルを1つ考えてください。\n"
+                "ジャンルの例：ミステリー、ファンタジー、ホラー、SF、日常、時代劇、群像劇など。\n"
+                "タイトルは物語の雰囲気を持つ短い日本語タイトルにしてください。\n"
+                "以下のJSON形式のみで出力してください。説明や前置きは不要です。\n"
+                '{"genre": "ジャンル名", "title": "タイトル"}'
+            )
+        sys_content = "あなたは創作のアイデアを提案するアシスタントです。"
     messages = [
-        {"role": "system", "content": "あなたは創作のアイデアを提案するアシスタントです。"},
+        {"role": "system", "content": sys_content},
         {"role": "user", "content": prompt},
     ]
     import json as _json
@@ -126,7 +146,7 @@ def generate_genre_title(genre: str = "") -> dict:
             temperature=0.9,
         )
         raw = response.choices[0].message.content.strip()
-        # JSONブロックを抽出
+        # Extract JSON block
         m = _re.search(r'\{.*?\}', raw, _re.DOTALL)
         if m:
             return _json.loads(m.group())

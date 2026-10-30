@@ -76,12 +76,18 @@ LANGUAGE: str = "ja"         # 手動プレイ用
 BATCH_LANGUAGE: str = "ja"   # バッチ用
 
 # バッチ用ジャンルリスト
-BATCH_GENRES = [
+BATCH_GENRES_JA = [
     "ホラー", "ミステリー", "ファンタジー", "SF",
     "時代劇", "現代ドラマ", "サスペンス", "青春",
     "怪談", "冒険", "犯罪", "日常",
 ]
-_batch_genre_queue: list[str] = []  # シャッフル済みキュー
+BATCH_GENRES_EN = [
+    "Horror", "Mystery", "Fantasy", "Sci-Fi",
+    "Historical", "Contemporary Drama", "Suspense", "Coming-of-Age",
+    "Ghost Story", "Adventure", "Crime", "Slice of Life",
+]
+BATCH_GENRES = BATCH_GENRES_JA  # overwritten after language selection
+_batch_genre_queue: list[str] = []  # shuffled queue
 
 # バッチ用ダイス設定（開始前に1回だけ手入力）
 BATCH_USE_DICE: bool = True
@@ -1069,7 +1075,7 @@ def run_single_session(plot_mode: str) -> None:
 
     # ジャンルをリストから選択し、タイトルのみLLMに生成させる
     genre = _pick_batch_genre()
-    result = generate_genre_title(genre)
+    result = generate_genre_title(genre, language=BATCH_LANGUAGE)
     if "error" in result:
         if BATCH_LANGUAGE == "en":
             error_print(f"Title generation failed: {result['error']}")
@@ -1285,6 +1291,7 @@ def main():
     lang = ask_language()
     LANGUAGE = lang
     BATCH_LANGUAGE = lang
+    BATCH_GENRES = BATCH_GENRES_EN if lang == "en" else BATCH_GENRES_JA
 
     print()
     if lang == "en":
