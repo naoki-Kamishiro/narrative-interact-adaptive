@@ -1,6 +1,6 @@
 """
-ナラティブインタラクト（LM Studio版）
-ジャンルとタイトルを入力するだけで物語が始まる。
+Narrative Interact (LM Studio edition)
+Enter a genre and title to start the story.
 """
 
 import sys
@@ -62,20 +62,20 @@ EPILOGUE_PROMPT_EN = (
 )
 EPILOGUE_PROMPT = EPILOGUE_PROMPT_JA  # will be overwritten after language selection
 
-# 自動プレイモード（起動引数で設定）
-AUTO_PLAY_MODE: str | None = None  # None=手動, "normal"=通常, "deviate"=逸脱
+# Auto-play mode (set via command-line argument)
+AUTO_PLAY_MODE: str | None = None  # None=manual, "normal"=normal, "deviate"=deviate
 
-# デバッグモード（--debug引数で有効）
+# Debug mode (enabled with --debug flag)
 DEBUG_MODE: bool = False
 
-# バッチ実行回数（--batch N で設定）
-BATCH_COUNT: int = 0  # 0=通常, N=N回バッチ実行
+# Batch session count (set with --batch N)
+BATCH_COUNT: int = 0  # 0=normal run, N=run N batch sessions
 
-# 言語設定
-LANGUAGE: str = "ja"         # 手動プレイ用
-BATCH_LANGUAGE: str = "ja"   # バッチ用
+# Language setting
+LANGUAGE: str = "ja"         # for manual play
+BATCH_LANGUAGE: str = "ja"   # for batch mode
 
-# バッチ用ジャンルリスト
+# Genre list for batch mode
 BATCH_GENRES_JA = [
     "ホラー", "ミステリー", "ファンタジー", "SF",
     "時代劇", "現代ドラマ", "サスペンス", "青春",
@@ -89,7 +89,7 @@ BATCH_GENRES_EN = [
 BATCH_GENRES = BATCH_GENRES_JA  # overwritten after language selection
 _batch_genre_queue: list[str] = []  # shuffled queue
 
-# バッチ用ダイス設定（開始前に1回だけ手入力）
+# Dice settings for batch mode (entered once before batch starts)
 BATCH_USE_DICE: bool = True
 BATCH_DIFFICULTY: str = "normal"
 BATCH_GM_CHARACTER: str = "none"
@@ -177,7 +177,7 @@ def ask(prompt: str) -> str:
 def call_gm(messages: list, max_retries: int = 1) -> str:
     _call_lang = LANGUAGE if not AUTO_PLAY_MODE else BATCH_LANGUAGE
     reply = chat(messages, language=_call_lang)
-    # コンテキスト上限はリトライせず即返す
+    # Context limit reached: return immediately without retrying
     if reply == "[CONTEXT_LIMIT]":
         return "[CONTEXT_LIMIT]"
     attempt = 0
@@ -187,7 +187,7 @@ def call_gm(messages: list, max_retries: int = 1) -> str:
         if reply == "[CONTEXT_LIMIT]":
             return "[CONTEXT_LIMIT]"
         attempt += 1
-    # 空応答はエラー扱いにする
+    # Treat empty response as an error
     if not reply.strip():
         return "[ERROR: empty response]"
     if not reply.startswith("[ERROR"):
@@ -212,7 +212,7 @@ def _is_adaptive() -> bool:
 
 
 def _get_plot_keywords(plot: dict) -> list[str]:
-    """プロットから逸脱判定用のキーワードリストを生成する。"""
+    """Build a keyword list from the plot for deviation detection."""
     keywords = []
     protagonist = plot.get("protagonist", {})
     if protagonist.get("goal_surface"):
@@ -228,12 +228,12 @@ def _get_plot_keywords(plot: dict) -> list[str]:
         scene = ending.get("scene", "") or ending.get("description", "") or ending.get("content", "")
         if scene:
             keywords.append(scene[:30])
-    return keywords[:5]  # 最大5キーワード
+    return keywords[:5]  # up to 5 keywords
 
 
 def _do_adaptive_replot(h: list) -> None:
-    """adaptiveモード: 逸脱が大きいと判断した時点でプロットを再生成し、
-    stateを更新してbeatキューを構築する。
+    """Adaptive mode: when significant deviation is detected, regenerate the plot
+    and update state and the beat queue.
     """
     import beat as beat_mod_inner
     s = state.get()
@@ -339,8 +339,8 @@ def _build_adaptive_beat_queue(new_plot: dict) -> list:
 
 
 def _get_recent_player_actions(history: list, n: int = 5) -> list[str]:
-    """履歴からプレイヤー（user）の発言を直近n件取得する。
-    開始メッセージ（先頭）・ダイスタグ・システム括弧行を除外し、各メッセージの1行目のみ返す。
+    """Get the n most recent player (user) actions from history.
+    Excludes the opening message, dice tags, and system parenthetical lines. Returns only the first line of each message.
     """
     user_msgs = [m["content"] for m in history if m["role"] == "user"]
     if user_msgs:
@@ -348,22 +348,28 @@ def _get_recent_player_actions(history: list, n: int = 5) -> list[str]:
     actions = []
     for msg in user_msgs:
         first_line = msg.split("\n")[0].strip()
-        if first_line.startswith("（") or not first_line:
+        if first_line.startswith("（") or first_line.startswith("(Scene instruction for GM:") or not first_line:
             continue
         actions.append(first_line)
     return actions[-n:] if actions else []
 
 
 def _apply_turning_point_injection(msgs: list) -> list:
-    """転換点フラグが立っている場合、描写強化injectionをメッセージ末尾のuserに追加してフラグを更新する。"""
+    """If the turning-point flag is set, append a description-enhancement injection to the last user message and update the flags."""
     s = state.get()
     if s.get("turning_point_triggered", False) and not s.get("turning_point_injected", False):
-        injection = "このターンは物語の転機です。通常より詳細に、丁寧に描写すること。500字以内とすること。"
+        _lang = LANGUAGE if not AUTO_PLAY_MODE else BATCH_LANGUAGE
+        if _lang == "en":
+            injection = "This turn is a turning point in the story. Depict it in more detail than usual, with care. Keep it under 500 characters."
+            wrapper = f"\n(Scene instruction for GM: {injection})"
+        else:
+            injection = "このターンは物語の転機です。通常より詳細に、丁寧に描写すること。500字以内とすること。"
+            wrapper = f"\n（GMへの場面指示: {injection}）"
         msgs = list(msgs)
         for i in reversed(range(len(msgs))):
             if msgs[i]["role"] == "user":
                 msgs[i] = dict(msgs[i])
-                msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
+                msgs[i]["content"] += wrapper
                 break
         state.update({"turning_point_injected": True, "turning_point_triggered": False})
         if DEBUG_MODE:
@@ -372,7 +378,8 @@ def _apply_turning_point_injection(msgs: list) -> list:
 
 
 def _build_api_messages(h: list) -> list:
-    """strongモードならビート注入版、それ以外は通常版でAPI用メッセージを返す。"""
+    """Return API messages with beat injection for strong mode, or standard messages otherwise."""
+    _lang = LANGUAGE if not AUTO_PLAY_MODE else BATCH_LANGUAGE
     if _is_strong():
         s = state.get()
         queue = s.get("beat_queue", [])
@@ -381,31 +388,42 @@ def _build_api_messages(h: list) -> list:
         if debug:
             if DEBUG_MODE:
                 print(debug, file=sys.stderr)
-        # キューが枯渇しており、まだエンディング促進をしていない場合
+        # Queue exhausted and ending prompt not yet injected
         queue_exhausted = queue and beat_mod.get_current_beat(queue, ptr) is None
         if not debug and queue_exhausted and not s.get("ending_prompted", False):
             plot = s.get("plot", {})
             climax_setting = plot.get("climax", {}).get("setting", "")
             ending = plot.get("ending", "")
-            if climax_setting and ending:
-                injection = (
-                    f"全てのプロット要素が出揃いました。"
-                    f"クライマックスの舞台「{climax_setting}」と着地点「{ending}」に向けて、"
-                    f"プレイヤーの行動に応じて物語を一歩進めてください。"
-                    f"物語が自然に完結した場合は、最後の1行に「[Ending]」とのみ出力すること。"
-                )
+            if _lang == "en":
+                if climax_setting and ending:
+                    injection = (
+                        f"All plot elements are in place. Advance the story one step toward the climax setting \"{climax_setting}\" and landing point \"{ending}\", responding to the player's action. "
+                        f"If the story reaches a natural conclusion, output \"[Ending]\" alone on the final line."
+                    )
+                else:
+                    injection = "All plot elements are in place. Advance the story one step toward a natural conclusion in response to the player's action. If concluded, output \"[Ending]\" alone on the final line."
+                wrapper = f"\n(Scene instruction for GM: {injection})"
             else:
-                injection = "全てのプロット要素が出揃いました。プレイヤーの行動に応じて物語を自然な完結へ向けて一歩進めてください。完結した場合は最後の1行に「[Ending]」とのみ出力してください。"
+                if climax_setting and ending:
+                    injection = (
+                        f"全てのプロット要素が出揃いました。"
+                        f"クライマックスの舞台「{climax_setting}」と着地点「{ending}」に向けて、"
+                        f"プレイヤーの行動に応じて物語を一歩進めてください。"
+                        f"物語が自然に完結した場合は、最後の1行に「[Ending]」とのみ出力すること。"
+                    )
+                else:
+                    injection = "全てのプロット要素が出揃いました。プレイヤーの行動に応じて物語を自然な完結へ向けて一歩進めてください。完結した場合は最後の1行に「[Ending]」とのみ出力してください。"
+                wrapper = f"\n（GMへの場面指示: {injection}）"
             msgs = [dict(m) for m in msgs]
             for i in reversed(range(len(msgs))):
                 if msgs[i]["role"] == "user":
                     msgs[i] = dict(msgs[i])
-                    msgs[i]["content"] = msgs[i]["content"] + f"\n（GMへの場面指示: {injection}）"
+                    msgs[i]["content"] = msgs[i]["content"] + wrapper
                     break
             state.update({"ending_prompted": True, "post_prompt_count": 0})
             if DEBUG_MODE:
                 print("[BEAT] queue exhausted: injecting ending prompt", file=sys.stderr)
-        # ending_prompted後も毎ターンinjectionを強化してGMに圧力をかける
+        # Apply increasingly stronger injection on each subsequent turn after ending prompt
         elif not debug and queue_exhausted and s.get("ending_prompted", False):
             post_count = s.get("post_prompt_count", 0)
             post_count += 1
@@ -414,64 +432,91 @@ def _build_api_messages(h: list) -> list:
             climax_setting = plot.get("climax", {}).get("setting", "")
             ending = plot.get("ending", "")
             if post_count >= 2:
-                # 2ターン目以降は強制モード
-                if climax_setting and ending:
-                    injection = (
-                        f"【必須】このターンで物語を完結させてください。"
-                        f"プレイヤーが何をしようとも、着地点「{ending}」の結末を迎えます。"
-                        f"新たな障壁や展開を追加せず、必ずこのターンで締めくくること。"
-                        f"最後の1行に必ず「[Ending]」とのみ出力してください。"
-                    )
+                # Turn 2+ onward: mandatory ending mode
+                if _lang == "en":
+                    if ending:
+                        injection = (
+                            f"[REQUIRED] End the story this turn. Whatever the player does, the story arrives at the conclusion: \"{ending}\". "
+                            f"Do not add new obstacles or developments; you must conclude this turn. Output \"[Ending]\" alone on the final line."
+                        )
+                    else:
+                        injection = "[REQUIRED] End the story this turn. Do not add new developments; you must conclude this turn. Output \"[Ending]\" alone on the final line."
+                    wrapper = f"\n(Scene instruction for GM: {injection})"
                 else:
-                    injection = "【必須】このターンで物語を完結させてください。新たな展開を追加せず、このターンで必ず締めくくること。最後の1行に必ず「[Ending]」とのみ出力してください。"
+                    if climax_setting and ending:
+                        injection = (
+                            f"【必須】このターンで物語を完結させてください。"
+                            f"プレイヤーが何をしようとも、着地点「{ending}」の結末を迎えます。"
+                            f"新たな障壁や展開を追加せず、必ずこのターンで締めくくること。"
+                            f"最後の1行に必ず「[Ending]」とのみ出力してください。"
+                        )
+                    else:
+                        injection = "【必須】このターンで物語を完結させてください。新たな展開を追加せず、このターンで必ず締めくくること。最後の1行に必ず「[Ending]」とのみ出力してください。"
+                    wrapper = f"\n（GMへの場面指示: {injection}）"
             else:
-                # 1ターン目は緩めの再促進
-                if climax_setting and ending:
-                    injection = (
-                        f"着地点「{ending}」に向けて、物語をクロージングへ導いてください。"
-                        f"完結した場合は最後の1行に「[Ending]」とのみ出力すること。"
-                    )
+                # Turn 1: softer re-prompt
+                if _lang == "en":
+                    if ending:
+                        injection = f"Lead the story toward its close, aimed at the landing point \"{ending}\". If the story concludes, output \"[Ending]\" alone on the final line."
+                    else:
+                        injection = "Lead the story toward its close. If the story concludes, output \"[Ending]\" alone on the final line."
+                    wrapper = f"\n(Scene instruction for GM: {injection})"
                 else:
-                    injection = "物語をクロージングへ導いてください。完結した場合は最後の1行に「[Ending]」とのみ出力してください。"
+                    if climax_setting and ending:
+                        injection = (
+                            f"着地点「{ending}」に向けて、物語をクロージングへ導いてください。"
+                            f"完結した場合は最後の1行に「[Ending]」とのみ出力すること。"
+                        )
+                    else:
+                        injection = "物語をクロージングへ導いてください。完結した場合は最後の1行に「[Ending]」とのみ出力してください。"
+                    wrapper = f"\n（GMへの場面指示: {injection}）"
             msgs = [dict(m) for m in msgs]
             for i in reversed(range(len(msgs))):
                 if msgs[i]["role"] == "user":
                     msgs[i] = dict(msgs[i])
-                    msgs[i]["content"] = msgs[i]["content"] + f"\n（GMへの場面指示: {injection}）"
+                    msgs[i]["content"] = msgs[i]["content"] + wrapper
                     break
             if DEBUG_MODE:
                 print(f"[BEAT] post-ending injection (turn {post_count})", file=sys.stderr)
         return _apply_turning_point_injection(msgs)
-    # adaptiveモード: 逸脱検出 → 警告injection → プロット再生成 → beat着地
+    # adaptive mode: deviation detection → warning injection → plot regeneration → beat landing
     if _is_adaptive():
         s = state.get()
         adaptive_replotted = s.get("adaptive_replotted", False)
 
         if adaptive_replotted:
-            # 再生成後はstrongと同様のbeat injection方式で着地させる
+            # After replot: use same beat injection approach as strong mode for landing
             queue = s.get("beat_queue", [])
             ptr = s.get("beat_ptr", 0)
             msgs, debug = hist.build_for_api_with_beat(h, queue, ptr)
             if debug and DEBUG_MODE:
                 print(debug, file=sys.stderr)
-            # キュー枯渇時のエンディング促進（strongと同じロジック）
+            # Queue exhausted: ending prompt (same logic as strong)
             queue_exhausted = queue and beat_mod.get_current_beat(queue, ptr) is None
             if queue_exhausted and not s.get("ending_prompted", False):
                 new_plot = s.get("adaptive_new_plot", {})
                 ending = new_plot.get("ending_scene", "")
-                injection = (
-                    f"全ての展開が出揃いました。"
-                    f"着地点「{ending}」に向けて物語を完結させてください。"
-                    f"完結した場合は最後の1行に「[Ending]」とのみ出力すること。"
-                ) if ending else (
-                    "全ての展開が出揃いました。物語を自然な完結へ向けて一歩進めてください。"
-                    "完結した場合は最後の1行に「[Ending]」とのみ出力してください。"
-                )
+                if _lang == "en":
+                    if ending:
+                        injection = f"All developments are in place. Bring the story to its conclusion: \"{ending}\". If concluded, output \"[Ending]\" alone on the final line."
+                    else:
+                        injection = "All developments are in place. Advance the story one step toward a natural conclusion. If concluded, output \"[Ending]\" alone on the final line."
+                    wrapper = f"\n(Scene instruction for GM: {injection})"
+                else:
+                    injection = (
+                        f"全ての展開が出揃いました。"
+                        f"着地点「{ending}」に向けて物語を完結させてください。"
+                        f"完結した場合は最後の1行に「[Ending]」とのみ出力すること。"
+                    ) if ending else (
+                        "全ての展開が出揃いました。物語を自然な完結へ向けて一歩進めてください。"
+                        "完結した場合は最後の1行に「[Ending]」とのみ出力してください。"
+                    )
+                    wrapper = f"\n（GMへの場面指示: {injection}）"
                 msgs = [dict(m) for m in msgs]
                 for i in reversed(range(len(msgs))):
                     if msgs[i]["role"] == "user":
                         msgs[i] = dict(msgs[i])
-                        msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
+                        msgs[i]["content"] += wrapper
                         break
                 state.update({"ending_prompted": True, "post_prompt_count": 0})
                 if DEBUG_MODE:
@@ -482,29 +527,42 @@ def _build_api_messages(h: list) -> list:
                 new_plot = s.get("adaptive_new_plot", {})
                 ending = new_plot.get("ending_scene", "")
                 if post_count >= 2:
-                    injection = (
-                        f"【必須】このターンで物語を完結させてください。"
-                        f"新たな障壁を追加せず、必ずこのターンで締めくくること。"
-                        f"最後の1行に必ず「[Ending]」とのみ出力してください。"
-                    )
+                    if _lang == "en":
+                        injection = "[REQUIRED] End the story this turn. Do not add new obstacles; you must conclude this turn. Output \"[Ending]\" alone on the final line."
+                        wrapper = f"\n(Scene instruction for GM: {injection})"
+                    else:
+                        injection = (
+                            f"【必須】このターンで物語を完結させてください。"
+                            f"新たな障壁を追加せず、必ずこのターンで締めくくること。"
+                            f"最後の1行に必ず「[Ending]」とのみ出力してください。"
+                        )
+                        wrapper = f"\n（GMへの場面指示: {injection}）"
                 else:
-                    injection = (
-                        f"着地点「{ending}」に向けて物語をクロージングへ導いてください。"
-                        f"完結した場合は最後の1行に「[Ending]」とのみ出力すること。"
-                    ) if ending else (
-                        "物語をクロージングへ導いてください。完結した場合は最後の1行に「[Ending]」とのみ出力してください。"
-                    )
+                    if _lang == "en":
+                        if ending:
+                            injection = f"Lead the story toward its close, aimed at \"{ending}\". If concluded, output \"[Ending]\" alone on the final line."
+                        else:
+                            injection = "Lead the story toward its close. If concluded, output \"[Ending]\" alone on the final line."
+                        wrapper = f"\n(Scene instruction for GM: {injection})"
+                    else:
+                        injection = (
+                            f"着地点「{ending}」に向けて物語をクロージングへ導いてください。"
+                            f"完結した場合は最後の1行に「[Ending]」とのみ出力すること。"
+                        ) if ending else (
+                            "物語をクロージングへ導いてください。完結した場合は最後の1行に「[Ending]」とのみ出力してください。"
+                        )
+                        wrapper = f"\n（GMへの場面指示: {injection}）"
                 msgs = [dict(m) for m in msgs]
                 for i in reversed(range(len(msgs))):
                     if msgs[i]["role"] == "user":
                         msgs[i] = dict(msgs[i])
-                        msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
+                        msgs[i]["content"] += wrapper
                         break
                 if DEBUG_MODE:
                     print(f"[ADAPTIVE] post-ending injection (turn {post_count})", file=sys.stderr)
             return _apply_turning_point_injection(msgs)
 
-        # 再生成前: 毎ターン逸脱判定（AUTO_PLAY_MODEに関わらず判定する）
+        # Before replot: check deviation every turn (regardless of AUTO_PLAY_MODE)
         recent = _get_recent_player_actions(h, n=3)
         if len(recent) >= 3:
             plot = s.get("plot", {})
@@ -516,10 +574,10 @@ def _build_api_messages(h: list) -> list:
                     print(f"[ADAPTIVE] deviation_count={deviation_count}", file=sys.stderr)
 
                 if deviation_count >= 5:
-                    # プロット再生成 → beat着地モードへ（到達カウントを記録）
+                    # Regenerate plot → switch to beat-landing mode (record peak count)
                     state.update({"peak_deviation_count": deviation_count})
                     _do_adaptive_replot(h)
-                    # 再生成直後はビートキューの先頭を注入
+                    # Immediately after replot: inject the first beat from the new queue
                     s2 = state.get()
                     queue = s2.get("beat_queue", [])
                     ptr = s2.get("beat_ptr", 0)
@@ -528,36 +586,49 @@ def _build_api_messages(h: list) -> list:
                         print(debug, file=sys.stderr)
                     return _apply_turning_point_injection(msgs)
                 elif deviation_count >= 3:
-                    # 警告injection: GMに収束を促す
+                    # Warning injection: prompt GM to converge
                     msgs = list(hist.build_for_api(h))
-                    injection = (
-                        "プレイヤーの行動がプロットから離れてきています。"
-                        "現在の状況から自然にエンディングへつながる展開を意識してください。"
-                        "エンディングの機会があれば迷わず終わらせること。"
-                    )
+                    if _lang == "en":
+                        injection = (
+                            "The player's actions are drifting from the plot. Keep in mind a development that leads naturally to an ending from the current situation. "
+                            "If an ending opportunity arises, take it without hesitation."
+                        )
+                        wrapper = f"\n(Scene instruction for GM: {injection})"
+                    else:
+                        injection = (
+                            "プレイヤーの行動がプロットから離れてきています。"
+                            "現在の状況から自然にエンディングへつながる展開を意識してください。"
+                            "エンディングの機会があれば迷わず終わらせること。"
+                        )
+                        wrapper = f"\n（GMへの場面指示: {injection}）"
                     for i in reversed(range(len(msgs))):
                         if msgs[i]["role"] == "user":
                             msgs[i] = dict(msgs[i])
-                            msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
+                            msgs[i]["content"] += wrapper
                             break
                     if DEBUG_MODE:
                         print(f"[ADAPTIVE] warning injection at count={deviation_count}", file=sys.stderr)
                     return _apply_turning_point_injection(msgs)
             else:
-                # 逸脱なし: カウントはリセットせず累積する
+                # No deviation: do not reset count, keep accumulating
                 if DEBUG_MODE and s.get("deviation_count", 0) > 0:
                     print(f"[ADAPTIVE] deviation: no (count stays at {s.get('deviation_count', 0)})", file=sys.stderr)
 
-    # off/adaptive(再生成前)/improvモード: ターン数過多→収束injection（25ターン超）
+    # off/adaptive(pre-replot)/improv mode: too many turns → convergence injection (after 25 turns)
     if not _is_strong():
         turn_count = sum(1 for m in h if m["role"] == "user")
         if turn_count > 25:
             msgs = list(hist.build_for_api(h))
-            injection = "物語が長くなっている。現在の状況から自然にエンディングへ収束させること。"
+            if _lang == "en":
+                injection = "The story has gone on for a while. Bring it to a natural close from the current situation."
+                wrapper = f"\n(Scene instruction for GM: {injection})"
+            else:
+                injection = "物語が長くなっている。現在の状況から自然にエンディングへ収束させること。"
+                wrapper = f"\n（GMへの場面指示: {injection}）"
             for i in reversed(range(len(msgs))):
                 if msgs[i]["role"] == "user":
                     msgs[i] = dict(msgs[i])
-                    msgs[i]["content"] += f"\n（GMへの場面指示: {injection}）"
+                    msgs[i]["content"] += wrapper
                     break
             if DEBUG_MODE:
                 print(f"[TURN_LIMIT] turn={turn_count}: injecting convergence prompt", file=sys.stderr)
@@ -568,7 +639,7 @@ def _build_api_messages(h: list) -> list:
 
 
 def _after_reply(reply: str) -> None:
-    """strongモード / adaptive再生成後 / offモード: GM応答後にビートポインタを進める。"""
+    """Advance the beat pointer after a GM reply in strong / adaptive-replotted / off mode."""
     is_beat_mode = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False)) or _is_off()
     if is_beat_mode:
         s = state.get()
@@ -580,52 +651,86 @@ def _after_reply(reply: str) -> None:
         state.update({"beat_queue": queue, "beat_ptr": ptr, "beat_just_advanced": advanced})
     else:
         state.update({"beat_just_advanced": False})
-    # 転換点injectionフラグをリセット（次の転換点で再発火できるよう）
+    # Reset turning-point injection flag so the next turning point can fire again
     state.update({"turning_point_injected": False})
 
 
 def _build_user_msg(action: str, dice_result: dict | None) -> str:
-    """userメッセージを構築する。ダイス結果を冒頭に置き、行動テキストをその後に。"""
+    """Build the user message, placing the dice result before the action text."""
     if not dice_result:
         return action
 
-    outcome = "成功" if dice_result["success"] else "失敗"
+    _lang = LANGUAGE if not AUTO_PLAY_MODE else BATCH_LANGUAGE
     intensity = dice_result.get("intensity", "normal")
-    reason = dice_result.get("reason", "判定")
     diff = dice_result["difficulty"]
     roll = dice_result["dice"]
 
-    if dice_result["success"] and intensity == "decisive":
-        inst = (
-            "決定的な成功として描写すること。"
-            "行動の目的を大きく前進させる具体的な結果を示す。"
-            "成功を無効化・矮小化しない。"
-        )
-    elif dice_result["success"]:
-        inst = (
-            "成功として状況が一歩前進したとして描写すること。"
-            "成功を無効化・矮小化しない。"
-        )
-    elif intensity == "severe":
-        inst = (
-            "重大な失敗として描写すること。目的は達成できない。"
-            "次の行動で対処可能な小規模な障害を最大1つ発生させる。"
-            "失敗を成功に近い描写にしてはならない。"
+    if _lang == "en":
+        outcome = "success" if dice_result["success"] else "failure"
+        reason = dice_result.get("reason", "check")
+        if dice_result["success"] and intensity == "decisive":
+            inst = (
+                "Depict this as a decisive success. "
+                "Show a concrete result that significantly advances the action's goal. "
+                "Do not nullify or downplay the success."
+            )
+        elif dice_result["success"]:
+            inst = (
+                "Depict this as a success: the situation advances one step. "
+                "Do not nullify or downplay the success."
+            )
+        elif intensity == "severe":
+            inst = (
+                "Depict this as a severe failure. The goal is not achieved. "
+                "Introduce at most one minor obstacle the player can address on the next action. "
+                "Do not depict the failure as close to success."
+            )
+        else:
+            inst = (
+                "Depict this as a failure: the action does not succeed. "
+                "Make the failure clear, then include at least one concrete action anchor in the scene — "
+                "another object, approach, person, sound, or light the player can act on next. "
+                "Do not depict the failure as close to success."
+            )
+        tag = (
+            f"(Check result: {reason} / difficulty {diff} / roll {roll} → {outcome}. "
+            f"{inst} "
+            f"Build the narrative to be consistent with the check result. "
+            f"Do not output the check result in the narration.)"
         )
     else:
-        inst = (
-            "失敗として行動が不成立に終わったとして描写すること。"
-            "失敗した事実を明確にした上で、場面内に存在する別の対象・別のアプローチ・別の人物・音・光など、"
-            "プレイヤーが次に取れる具体的な行動起点を少なくとも一つ描写に含めること。"
-            "失敗を成功に近い描写にしてはならない。"
+        outcome = "成功" if dice_result["success"] else "失敗"
+        reason = dice_result.get("reason", "判定")
+        if dice_result["success"] and intensity == "decisive":
+            inst = (
+                "決定的な成功として描写すること。"
+                "行動の目的を大きく前進させる具体的な結果を示す。"
+                "成功を無効化・矮小化しない。"
+            )
+        elif dice_result["success"]:
+            inst = (
+                "成功として状況が一歩前進したとして描写すること。"
+                "成功を無効化・矮小化しない。"
+            )
+        elif intensity == "severe":
+            inst = (
+                "重大な失敗として描写すること。目的は達成できない。"
+                "次の行動で対処可能な小規模な障害を最大1つ発生させる。"
+                "失敗を成功に近い描写にしてはならない。"
+            )
+        else:
+            inst = (
+                "失敗として行動が不成立に終わったとして描写すること。"
+                "失敗した事実を明確にした上で、場面内に存在する別の対象・別のアプローチ・別の人物・音・光など、"
+                "プレイヤーが次に取れる具体的な行動起点を少なくとも一つ描写に含めること。"
+                "失敗を成功に近い描写にしてはならない。"
+            )
+        tag = (
+            f"（判定結果: {reason} / 難易度{diff} / 出目{roll} → {outcome}。"
+            f"{inst}"
+            f"判定結果を受けてから、その結果に整合する物語を構築すること。"
+            f"判定結果を地の文に出力しないこと。）"
         )
-
-    tag = (
-        f"（判定結果: {reason} / 難易度{diff} / 出目{roll} → {outcome}。"
-        f"{inst}"
-        f"判定結果を受けてから、その結果に整合する物語を構築すること。"
-        f"判定結果を地の文に出力しないこと。）"
-    )
     return f"{action}\n{tag}"
 
 
@@ -801,23 +906,23 @@ def _handle_gm_char_and_turning_point(action: str, h: list) -> None:
     s = state.get()
     gm_character = s.get("gm_character", "none")
 
-    # beatモード（strong/adaptive再生成後/off）での転換点検出: コード側で判定
+    # Beat mode (strong/adaptive-replotted/off): turning-point detection via code
     is_beat_mode = _is_strong() or (_is_adaptive() and s.get("adaptive_replotted", False)) or _is_off()
-    # improv または adaptive再生成前はLLMで判定
+    # improv or adaptive (pre-replot): turning-point detection via LLM
     is_llm_judge = state.get_plot_mode() == "improv" or (_is_adaptive() and not s.get("adaptive_replotted", False))
 
     is_turning_point = False
 
     if is_beat_mode:
-        # beat_just_advanced=True のターンのみ転換点（1回だけ発動）
+        # Only treat as turning point when beat_just_advanced=True
         is_turning_point = s.get("beat_just_advanced", False)
     elif is_llm_judge:
-        # improv / adaptive再生成前: 毎ターンLLMで判定
+        # improv / adaptive (before replot): LLM judge every turn
         is_turning_point = check_turning_point(h, action, language=LANGUAGE)
         if DEBUG_MODE and is_turning_point:
             print("[TURNING] turning point detected (llm judge)", file=sys.stderr)
 
-    # GMキャラクターコメント（turning_pointの場合のみ）
+    # GM character comment (only on turning points)
     if is_turning_point and gm_character != "none":
         comment = generate_gm_char_comment(action, h, gm_character, gm_char_log=s.get("gm_char_log", []), language=s.get("language", "ja"))
         if comment:
@@ -826,7 +931,7 @@ def _handle_gm_char_and_turning_point(action: str, h: list) -> None:
                 _char_labels = GM_CHAR_LABELS_EN if s.get("language", "ja") == "en" else GM_CHAR_LABELS
                 label = _char_labels.get(gm_character, gm_character)
                 print(f"[GM_CHAR] {label}: {comment}", file=sys.stderr)
-            # コメントをstateに蓄積（JSONログに残す）
+            # Accumulate comment in state (for JSON log)
             s = state.get()
             log = list(s.get("gm_char_log", []))
             log.append({
@@ -836,7 +941,7 @@ def _handle_gm_char_and_turning_point(action: str, h: list) -> None:
             })
             state.update({"gm_char_log": log})
 
-    # 転換点描写強化フラグをstateに記録
+    # Record turning-point description-enhancement flag in state
     if is_turning_point:
         state.update({"turning_point_triggered": True})
         if DEBUG_MODE:
@@ -899,7 +1004,7 @@ def start_new_game() -> tuple[list, str, str]:
     print()
 
     reply = call_gm(_build_api_messages(h))
-    # 主人公名を表示（improvは開始シーンから抽出、他モードはプロットから取得）
+    # Display protagonist name (improv: extracted from opening scene; other modes: from plot)
     if not reply.startswith("[ERROR"):
         if plot_mode == "improv":
             improv_name = extract_protagonist_name(reply, language=LANGUAGE)
@@ -919,7 +1024,7 @@ def start_new_game() -> tuple[list, str, str]:
                 print()
     if reply.startswith("[ERROR"):
         error_print("Failed to generate response. You can /retry." if LANGUAGE == "en" else "応答生成に失敗しました。/retryで再試行できます。")
-        # 自動プレイ時: エラー文字列がプレイヤーLLMに渡らないよう空文字にする
+        # In auto-play: use empty string so the error string is not passed to the player LLM
         initial_reply_for_player = ""
     else:
         h = hist.add_assistant(h, reply)
@@ -929,7 +1034,7 @@ def start_new_game() -> tuple[list, str, str]:
     return h, genre, title, initial_reply_for_player
 
 def _print_history(h: list) -> None:
-    """履歴を順番に表示する。systemメッセージとダイス結果タグは除外。"""
+    """Display history in order. Skips system messages and dice result tags."""
     for m in h:
         if m["role"] == "system":
             continue
@@ -937,11 +1042,11 @@ def _print_history(h: list) -> None:
         if m["role"] == "assistant":
             gm_print(content)
         elif m["role"] == "user":
-            # ダイス結果タグ（判定結果: ...）を除いてプレイヤー行動のみ表示
-            # タグ付きの場合、最初の行がプレイヤー入力
+            # Show player action only, excluding dice result tags
+            # When a tag is present, the first line is the player input
             action_line = content.split("\n")[0]
-            # （ ...） で始まるシステム挿入メッセージは表示しない
-            if not action_line.startswith("（"):
+            # Skip system-injected messages starting with （...） or (Scene instruction for GM:
+            if not (action_line.startswith("（") or action_line.startswith("(Scene instruction for GM:")):
                 label = "Your action" if LANGUAGE == "en" else "あなたの行動"
                 print(f"\n{label}: {action_line}")
 
@@ -955,7 +1060,7 @@ def resume_game() -> tuple[list, str, str] | None:
     plot_mode = s.get("plot_mode", "off")
     dice_mod.set_difficulty_preset(s.get("difficulty_preset", "normal"))
 
-    # 旧セーブにbeat_queueがない場合は再構築
+    # Rebuild beat_queue if missing from old save data
     if plot_mode in ("strong", "off") and plot and not s.get("beat_queue"):
         queue = beat_mod.build_queue(plot)
         state.update({"beat_queue": queue, "beat_ptr": 0, "ending_suppressed": False, "ending_prompted": False})
@@ -976,8 +1081,8 @@ def resume_game() -> tuple[list, str, str] | None:
     return h, genre, title
 
 def save_session_json(h: list, title: str) -> None:
-    """AUTO_PLAYモード用: セッション全体をJSONで保存する。"""
-    # Windows/Linux共通で問題になる文字を全て除去
+    """Save the entire session as JSON (used in AUTO_PLAY mode)."""
+    # Remove characters that are problematic on both Windows and Linux
     import re as _re
     import subprocess as _sp
     import os as _os
@@ -1012,7 +1117,7 @@ def save_session_json(h: list, title: str) -> None:
         system_print(f"セッションを保存しました: {filename}")
 
 def handle_ending(h: list) -> tuple[list, bool]:
-    """エンディング後の選択を処理する。戻り値は (履歴, 終了するか)。"""
+    """Handle choices after an ending. Returns (history, should_quit)."""
     lang = state.get().get("language", "ja")
     if lang == "en":
         system_print("The story has reached its ending. Thank you for playing!")
@@ -1021,7 +1126,7 @@ def handle_ending(h: list) -> tuple[list, bool]:
     if AUTO_PLAY_MODE:
         end_reason = "ending"
         state.update({"end_reason": end_reason})
-        # 自動プレイ時はエピローグを自動生成して終了
+        # In auto-play mode, auto-generate the epilogue then quit
         h = hist.add_user(h, EPILOGUE_PROMPT)
         reply = call_gm(hist.build_for_api(h))
         if reply.startswith("[ERROR"):
@@ -1069,14 +1174,14 @@ def handle_ending(h: list) -> tuple[list, bool]:
             system_print("1か2を入力してください。")
 
 def push_user(h: list, content: str, replace_pending: bool) -> list:
-    """userメッセージを追加する。replace_pending=Trueなら、エラーで未応答のまま
-    残っている直前のuserメッセージを置き換える（放棄された行動として扱う）。"""
+    """Add a user message. If replace_pending=True, replace the previous user message
+    that was left unanswered due to an error (treat it as an abandoned action)."""
     if replace_pending and h and h[-1]["role"] == "user":
         h.pop()
     return hist.add_user(h, content)
 
 def _pick_batch_genre() -> str:
-    """バッチ用ジャンルキューから次のジャンルを取り出す。空になったら再シャッフル。"""
+    """Pick the next genre from the batch genre queue, reshuffling when empty."""
     global _batch_genre_queue
     if not _batch_genre_queue:
         _batch_genre_queue = random.sample(BATCH_GENRES, len(BATCH_GENRES))
@@ -1084,12 +1189,12 @@ def _pick_batch_genre() -> str:
 
 
 def run_single_session(plot_mode: str) -> None:
-    """バッチモード用: 1セッションを実行してセーブして終了する。
-    plot_mode: あらかじめ選択済みの物語の軸。
+    """Run a single session for batch mode, save it, then finish.
+    plot_mode: the story axis selected before the session starts.
     """
     global AUTO_PLAY_MODE, DEBUG_MODE
 
-    # ジャンルをリストから選択し、タイトルのみLLMに生成させる
+    # Pick genre from the list; have the LLM generate only the title
     genre = _pick_batch_genre()
     result = generate_genre_title(genre, language=BATCH_LANGUAGE)
     if "error" in result:
@@ -1111,7 +1216,7 @@ def run_single_session(plot_mode: str) -> None:
     else:
         system_print(f"ジャンル: {genre} / タイトル: 「{title}」")
 
-    # バッチ用ダイス設定を適用
+    # Apply batch dice settings
     dice_mod.set_difficulty_preset(BATCH_DIFFICULTY)
     difficulty_preset = BATCH_DIFFICULTY
 
@@ -1199,7 +1304,7 @@ def run_single_session(plot_mode: str) -> None:
                     else:
                         sys_prompt = f"あなたが操作する主人公の名前は「{_pname}」です。他のキャラクターを操作しないこと。\n" + sys_prompt
                 recent_actions = _get_recent_player_actions(h, n=5)
-                # DEVIATEモードでは「繰り返し禁止の参考」を渡さない（行動抑制を避けるため）
+                # In DEVIATE mode, don't pass recent actions (avoid suppressing deviations)
                 _ra = None if AUTO_PLAY_MODE == "deviate" else recent_actions
                 action = chat_player(last_gm_reply, sys_prompt, _ra, language=BATCH_LANGUAGE)
                 if action.startswith("[ERROR"):
@@ -1223,7 +1328,7 @@ def run_single_session(plot_mode: str) -> None:
         user_msg = _build_user_msg(action, dice_result)
         h = hist.add_user(h, user_msg)
 
-        # GMキャラクターコメント + 転換点フラグ設定
+        # GM character comment + turning-point flag
         _handle_gm_char_and_turning_point(action, h)
 
         reply = call_gm(_build_api_messages(h))
@@ -1267,7 +1372,7 @@ def run_single_session(plot_mode: str) -> None:
 
 
 def main():
-    global AUTO_PLAY_MODE, DEBUG_MODE, BATCH_COUNT, LANGUAGE, BATCH_LANGUAGE
+    global AUTO_PLAY_MODE, DEBUG_MODE, BATCH_COUNT, LANGUAGE, BATCH_LANGUAGE, BATCH_GENRES
     if "--help" in sys.argv or "-h" in sys.argv:
         print("使い方: python main.py [オプション]")
         print()
@@ -1284,7 +1389,7 @@ def main():
     elif "--deviate" in sys.argv:
         AUTO_PLAY_MODE = "deviate"
 
-    # --batch N の解析
+    # Parse --batch N
     if "--batch" in sys.argv:
         idx = sys.argv.index("--batch")
         if idx + 1 < len(sys.argv):
@@ -1297,13 +1402,13 @@ def main():
             print("--batch の後に回数を指定してください。例: --batch 5")
             sys.exit(1)
 
-    # 自動プレイ時は常にデバッグ有効
+    # Always enable debug in auto-play mode
     if AUTO_PLAY_MODE or "--debug" in sys.argv:
         DEBUG_MODE = True
         beat_mod.DEBUG_MODE = True
         plot_mod.DEBUG_MODE = True
 
-    # 言語選択（バナー表示前に行う）
+    # Language selection (before banner display)
     lang = ask_language()
     LANGUAGE = lang
     BATCH_LANGUAGE = lang
@@ -1332,7 +1437,7 @@ def main():
         print("コマンド一覧は /help または /h")
     print()
 
-    # バッチモード
+    # Batch mode
     if BATCH_COUNT > 0:
         if not AUTO_PLAY_MODE:
             if lang == "en":
@@ -1342,7 +1447,7 @@ def main():
             sys.exit(1)
         plot_mode = ask_plot_mode()
         print()
-        # ダイス設定を1回だけ手入力
+        # Ask dice settings once for all batch sessions
         global BATCH_USE_DICE, BATCH_DIFFICULTY, BATCH_GM_CHARACTER
         BATCH_USE_DICE = ask_use_dice()
         if BATCH_USE_DICE:
@@ -1412,19 +1517,19 @@ def main():
 
     if h is None:
         h, genre, title, initial_reply = start_new_game()
-        # 初回生成が失敗した場合（空文字）はpending_failedをTrueに
+        # If the initial generation failed (empty string), mark pending_failed
         pending_failed = (initial_reply == "")
     else:
         initial_reply = ""
         pending_failed = False
 
-    last_gm_reply = initial_reply  # 自動プレイ用: 最後のGM応答（初回含む）
-    auto_play_turn = 0  # 自動プレイのターンカウンタ
-    AUTO_PLAY_MAX_TURNS = 40  # 自動プレイの最大ターン数
+    last_gm_reply = initial_reply  # For auto-play: last GM response (including initial)
+    auto_play_turn = 0  # Auto-play turn counter
+    AUTO_PLAY_MAX_TURNS = 40  # Maximum turns for auto-play
 
     while True:
         if AUTO_PLAY_MODE:
-            # ターン上限チェック
+            # Turn limit check
             auto_play_turn += 1
             if auto_play_turn > AUTO_PLAY_MAX_TURNS:
                 state.update({"end_reason": "turn_limit"})
@@ -1439,7 +1544,7 @@ def main():
             if not last_gm_reply:
                 action = ""
             else:
-                # ending_prompted後、一定ターンでプレイヤー入力を強制終了に切り替え
+                # After ending_prompted, force-end player input after a few turns
                 if _is_strong() and state.get().get("ending_prompted", False) and \
                         state.get().get("post_prompt_count", 0) >= 3:
                     _lang_auto = state.get().get("language", "ja")
@@ -1453,7 +1558,7 @@ def main():
                         sys_prompt = PLAYER_SYSTEM_NORMAL_EN if AUTO_PLAY_MODE == "normal" else PLAYER_SYSTEM_DEVIATE_EN
                     else:
                         sys_prompt = PLAYER_SYSTEM_NORMAL if AUTO_PLAY_MODE == "normal" else PLAYER_SYSTEM_DEVIATE
-                    # 主人公名をsys_promptに付加（キャラ誤操作防止）
+                    # Prepend protagonist name to sys_prompt (prevent controlling wrong character)
                     _plot = state.get().get("plot", {})
                     _protagonist = _plot.get("protagonist", {}) if _plot else {}
                     _pname = _protagonist.get("name", "") if _protagonist else ""
@@ -1463,7 +1568,7 @@ def main():
                         else:
                             sys_prompt = f"あなたが操作する主人公の名前は「{_pname}」です。他のキャラクターを操作しないこと。\n" + sys_prompt
                     recent_actions = _get_recent_player_actions(h, n=5)
-                    # DEVIATEモードでは「繰り返し禁止の参考」を渡さない（行動抑制を避けるため）
+                    # In DEVIATE mode, don't pass recent actions (avoid suppressing deviations)
                     _ra = None if AUTO_PLAY_MODE == "deviate" else recent_actions
                     action = chat_player(last_gm_reply, sys_prompt, _ra, language=_lang_auto)
                     if action.startswith("[ERROR"):
@@ -1507,18 +1612,18 @@ def main():
             continue
 
         if action in ("/retry", "/r"):
-            # 直前がassistantなら削除して再生成。直前がuser（エラーで未応答）なら
-            # そのuserメッセージをそのまま再利用する。
+            # If last message is assistant, remove it and regenerate.
+            # If last is user (unanswered due to error), reuse that user message.
             retrying_assistant = h and h[-1]["role"] == "assistant"
             if retrying_assistant:
                 h.pop()
-                # strongモード: 直前の_after_reply()で進んだptrを1つ戻す
+                # strong mode: roll back ptr advanced by the previous _after_reply()
                 if _is_strong():
                     s = state.get()
                     ptr = s.get("beat_ptr", 0)
                     if ptr > 0:
                         new_ptr = ptr - 1
-                        # 戻した位置のdoneをFalseに戻す
+                        # Also reset the done flag at the rolled-back position
                         queue = s.get("beat_queue", [])
                         if new_ptr < len(queue) and queue[new_ptr]["done"]:
                             queue[new_ptr] = dict(queue[new_ptr])
@@ -1575,10 +1680,10 @@ def main():
 
         if action == "/hint":
             hint_base = hist.build_for_api(h)
-            # 最後がuserメッセージ（エラーで未応答）の場合は重複を避けるため削除してから追加
+            # If the last message is a user message (unanswered due to error), remove it to avoid duplication
             if hint_base and hint_base[-1]["role"] == "user":
                 hint_base = hint_base[:-1]
-            # 最後がassistantでない場合（空履歴等）はhintが出せないのでスキップ
+            # If the last message is not assistant (empty history etc.), skip hint
             _lang = state.get().get("language", "ja")
             if not hint_base or hint_base[-1]["role"] != "assistant":
                 if _lang == "en":
@@ -1594,7 +1699,7 @@ def main():
             call_gm(hint_msg)
             continue
 
-        # ダイス判定（use_diceがTrueの場合のみ。システム強制終了アクションは除外）
+        # Dice roll (only when use_dice=True; exclude system-forced ending actions)
         is_forced_ending = action.startswith("（物語を終わらせてください）") or action.startswith("(Please end the story)")
         _lang = state.get().get("language", "ja")
         dice_result = dice_mod.judge(action, h, language=_lang) if (state.get().get("use_dice", True) and not is_forced_ending) else None
@@ -1609,7 +1714,7 @@ def main():
         user_msg = _build_user_msg(action, dice_result)
         h = push_user(h, user_msg, pending_failed)
 
-        # GMキャラクターコメント + 転換点フラグ設定
+        # GM character comment + turning-point flag
         _handle_gm_char_and_turning_point(action, h)
 
         reply = call_gm(_build_api_messages(h))
@@ -1620,8 +1725,8 @@ def main():
                 error_print("Failed to generate response. You can /retry.")
             else:
                 error_print("応答生成に失敗しました。/retryで再試行できます。")
-            # userメッセージ（ダイス結果込み）は保持したまま続行。
-            # /retryで再利用でき、別の行動を入力した場合は置き換えられる。
+            # Keep the user message (with dice result) and continue.
+            # It can be reused with /retry, or replaced if a different action is entered.
             pending_failed = True
             continue
 
@@ -1631,7 +1736,7 @@ def main():
         _after_reply(reply)
 
         if check_ending(reply):
-            # strong / adaptive再生成後のエンディング早出し抑止
+            # Suppress premature endings in strong / adaptive-replotted mode
             _use_beat_suppression = _is_strong() or (_is_adaptive() and state.get().get("adaptive_replotted", False))
             if _use_beat_suppression and not state.get().get("ending_suppressed", False):
                 s = state.get()
@@ -1640,10 +1745,10 @@ def main():
                 queue, ptr, suppressed = beat_mod.handle_ending_suppression(queue, ptr)
                 if suppressed:
                     state.update({"beat_queue": queue, "beat_ptr": ptr, "ending_suppressed": True})
-                    # エンディングマーカーを除いて続行
+                    # Strip ending marker and continue
                     cleaned_reply = h[-1]["content"].replace(ENDING_MARKER, "").strip()
                     h[-1] = {"role": "assistant", "content": cleaned_reply}
-                    last_gm_reply = cleaned_reply  # プレイヤーLLMにマーカーが渡らないよう更新
+                    last_gm_reply = cleaned_reply  # Update so player LLM does not receive the marker
                     continue
 
             h, quit_ = handle_ending(h)
