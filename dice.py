@@ -79,7 +79,7 @@ DIFFICULTY_PRESETS = {
     "normal": 0,
     "hard": 2,
 }
-_difficulty_offset = 0  # main.pyから設定される
+_difficulty_offset = 0  # set from main.py at startup
 
 def set_difficulty_preset(preset: str) -> None:
     """Set the difficulty preset at startup."""
@@ -136,11 +136,11 @@ def judge(action: str, history: list, language: str = "ja") -> dict | None:
     except Exception:
         return {"error": True}
 
-    # data が dict でない場合（配列や文字列で返ってきた場合）はエラー扱い
+    # If data is not a dict (e.g. array or string returned), treat as error
     if not isinstance(data, dict):
         return {"error": True}
 
-    # need_roll が文字列 "false" の場合も False として扱う
+    # Also treat string "false" as False for need_roll
     need_roll = data.get("need_roll", False)
     if isinstance(need_roll, str):
         need_roll = need_roll.lower() not in ("false", "0", "no", "")
