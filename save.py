@@ -1,7 +1,7 @@
 """
-セーブ・ロードモジュール。
-state + history を同期して保存する。
-バージョン管理付き（将来の互換性のため）。
+Save/load module.
+Saves and loads state + history together.
+Versioned for future compatibility.
 """
 
 import json
@@ -19,9 +19,9 @@ def save(state: dict, history: list, filepath: str = SAVE_FILE) -> None:
     try:
         with open(filepath, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=2)
-        system_print(f"セーブしました: {filepath}")
+        system_print(f"Saved: {filepath}")
     except Exception as e:
-        error_print(f"セーブ失敗: {e}")
+        error_print(f"Save failed: {e}")
 
 def load(filepath: str = SAVE_FILE) -> tuple[dict | None, list | None]:
     try:
@@ -29,13 +29,13 @@ def load(filepath: str = SAVE_FILE) -> tuple[dict | None, list | None]:
             data = json.load(f)
         version = data.get("version", 0)
         if version != SAVE_VERSION:
-            error_print(f"セーブデータのバージョンが異なります（v{version} → v{SAVE_VERSION}）。ロードできません。")
+            error_print(f"Save data version mismatch (v{version} → v{SAVE_VERSION}). Cannot load.")
             return None, None
         return data.get("state"), data.get("history")
     except FileNotFoundError:
         return None, None
     except Exception as e:
-        error_print(f"ロード失敗: {e}")
+        error_print(f"Load failed: {e}")
         return None, None
 
 def exists(filepath: str = SAVE_FILE) -> bool:
@@ -47,7 +47,7 @@ def exists(filepath: str = SAVE_FILE) -> bool:
         return False
 
 def delete(filepath: str = SAVE_FILE) -> None:
-    """セーブデータを削除する。"""
+    """Delete save data."""
     import os
     try:
         if os.path.exists(filepath):
