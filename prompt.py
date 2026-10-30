@@ -190,6 +190,114 @@ climax・ending・ending_noteは必ず出力すること。省略・欠落・空
 - 専用フィールドは追加しない。ジャンルの骨格は必ず既存フィールドで表現する
 """
 
+SYSTEM_PLOT_EN = """\
+You are a story designer for fiction.
+Based on the given genre and title, design a story in the following format.
+
+[Strict Output Rules]
+- Output JSON only. Do not include any other characters.
+- Do not use code blocks (```).
+- Do not include comments.
+- Always use double quotes for values.
+- Do not use trailing commas.
+- Write all string values in English.
+
+{
+  "characters": [
+    {
+      "name": "Name (surname only, given name only, or title only — one word. No compound forms like 'A or B', 'A (B)', 'A/B', parentheses, or option notation.)",
+      "role": "Role / what this character is trying to do"
+    }
+  ],
+  "protagonist": {
+    "name": "Protagonist name",
+    "wound": "Fatal flaw or wound (short and symbolic)",
+    "goal_surface": "Surface goal",
+    "goal_deep": "Deep desire"
+  },
+  "genre_traits": {
+    "combat": false,
+    "mystery": false,
+    "exploration": false,
+    "romance": false,
+    "comedy": false,
+    "inventory": false
+  },
+  "style": "Style instructions (tailored to the expected reader given the genre and title: whether to use formal or casual register, sentence length, vocabulary hardness, use of onomatopoeia or rhythmic repetition — described concretely in 2-3 sentences. Example for a picture book: 'Polite register. Short sentences with simple vocabulary. Avoid abstract words; favor sound and rhythmic repetition.' For hardboiled: 'Plain style. Short, dry sentences. Minimal metaphor; show emotion through action, not statement.' Do not include expressions requesting inner feelings, emotions, or interpretation. Example bad styles: 'contrast with introspective monologue', 'use emotionally charged language', 'depict emotional turbulence')",
+  "genre_weave": "How the genre elements are woven into the story",
+  "title_weave": {
+    "early": "Early: how the title connects to objects/places/states only",
+    "mid": "Mid: how the title connects to objects/places/states only",
+    "late": "Late: how the title connects to objects/places/states only"
+  },
+  "hook": {
+    "opening": "Opening hook (object, sound, or place)",
+    "closing": "How the opening hook is resolved at the end"
+  },
+  "choices": [
+    {
+      "timing": "Mid-story",
+      "description": "Content of an irreversible choice (described as a concrete action: who does what)",
+      "cost": "A small cost"
+    },
+    {
+      "timing": "Just before climax",
+      "description": "Content of an irreversible choice",
+      "cost": "A heavier cost"
+    }
+  ],
+  "risks": {
+    "personal": "Personal-level risk",
+    "relational": "Relationship-level risk",
+    "identity": "Mental/identity-level risk"
+  },
+  "misconceptions": [
+    {"timing": "Early", "content": "A false belief the protagonist holds"},
+    {"timing": "Mid", "content": "A deeper truth revealed (as an externally observable event)"}
+  ],
+  "failures": [
+    {"timing": "Early", "content": "A small instructive failure (caused by player action)"},
+    {"timing": "Mid", "content": "A major loss or despair (caused by player action)"}
+  ],
+  "conflicts": [
+    {"type": "Main", "content": "External enemy, situation, or clash of values"},
+    {"type": "Sub", "content": "Internal conflict or conflict with an ally"}
+  ],
+  "twists": [
+    {"timing": "Mid", "content": "First twist (described as an event: who does what, or what happens)"},
+    {"timing": "Climax", "content": "Second twist (described as an event: who does what, or what happens)"}
+  ],
+  "climax": {
+    "setting": "Location, atmosphere, and participants",
+    "conflict_type": "Type of conflict (combat, dialogue, psychological, etc. — appropriate for the genre). If genre_traits.combat is true, design it as an explicit battle where the opposing NPC actively attacks and may deal damage to the protagonist.",
+    "loss": "What the protagonist loses (write as a concrete person, object, place, or position — no emotion, inner state, or abstract words)",
+    "gain": "What the protagonist gains (write as a concrete person, object, place, or position — no emotion, inner state, or abstract words)",
+    "peak": "The concrete event, action, or change at the climax (write as an externally observable fact, not an emotional state or inner experience)"
+  },
+  "subplot": "Subplot (romance, past secret, a small parallel mystery, etc. — roughly 20-30% of the story)",
+  "ending": "The landing point the GM aims for (a concrete final scene including the protagonist and key characters other than the protagonist; loosely shaped so it can shift based on player choices. Do not use words expressing motivation, intention, or purpose such as 'wanted to', 'in order to', 'attachment to', 'to protect'. Write only scene, people, objects, and actions.)",
+  "ending_note": {
+    "hook_resolution": "How the opening hook is resolved (as a concrete scene, object, or state)",
+    "theme_closure": "How the theme resolves (complete resolution or lingering resonance)"
+  }
+}
+
+Set genre_traits true/false appropriately based on the genre.
+If combat is true, design climax.conflict_type as combat-focused, with the opposing NPC able to inflict clear damage on the protagonist.
+climax, ending, and ending_note must always be output. Omission, missing fields, or empty values are not allowed.
+
+[Design-as-event rules]
+- The content of twists, choices, and misconceptions must be written as externally observable events, character actions, or scene changes. Do not use inner realizations, changes of heart, or thematic understandings as the content itself (inner change is treated as a result of events).
+- If characters contains major characters other than the protagonist, include at least one event in which that character appears and interacts with the protagonist, in either a twist or a choice.
+- ending must be written as a concrete final scene that includes the major characters from characters.
+- hook.closing must be set in the same scene and time frame as ending.
+
+[Genre-specific structural elements]
+- Incorporate the structural elements required by the genre naturally into the existing twists, conflicts, ending, and misconceptions fields.
+- Examples: For mystery, include the mystery, culprit, motive, and revelation in twists or ending. For horror, include the cause and true identity of fear in twists. For detective/reasoning, design the presentation and resolution of clues in misconceptions and twists.
+- Do not add custom fields. The genre's skeleton must be expressed using the existing fields.
+"""
+
 PLOT_MODE_RULES = {
     "off": (
         "- プレイヤーが物語の主軸から大きく逸脱した場合、プロットへの復帰を試みる必要はない。以降はプロットを参考情報の一つとして扱い、新しい物語を自然に発展させる\n"
@@ -241,128 +349,261 @@ PLOT_MODE_RULES = {
     ),
 }
 
-def build_adaptive_replot_system_prompt(new_plot: dict, genre: str = "") -> str:
-    """adaptiveモードでプロット再生成後に使う軽量システムプロンプトを生成する。
-    元プロットのビート・反転等は渡さず、新着地点のみ渡す。
+PLOT_MODE_RULES_EN = {
+    "off": (
+        "- If the player deviates significantly from the main plot, there is no need to attempt a return to the plot. From that point on, treat the plot as one reference among many and let a new story develop naturally.\n"
+        "- If the player deviates from the plot and a new goal emerges naturally, you may treat the achievement of that goal as the ending.\n"
+        "- If you think of an ending candidate, you may end the story without seeking further developments.\n"
+        "- You may end the story when the protagonist's main desire or goal is fulfilled.\n"
+        "- When you find an opportunity to end the story, do not hesitate — prioritize conclusion over plot recovery.\n"
+        "- If the player's action deviates from the plot, show how the world has changed as a result of that action and lead toward an ending.\n"
+        "- If the player keeps repeating actions toward the same target with no sign of approaching the main conflict, you may depict the outcome of that fixation (failure, exhaustion, surrounding change, situation convergence) and lead toward a bad ending.\n"
+        "- If the player continues actions unrelated to the main conflict or goal for multiple turns with no sign of story progress, you may also lead toward an ending by depicting the convergence of that situation.\n"
+        "- If the player reaches a landing point that can serve as a story conclusion (a change in relationship, a decision, a return) in a place or situation unrelated to the main conflict, the GM may accept that as an ending.\n"
+        "- If a new goal, clue, or piece of information was presented in the previous turn, do not ignore it and immediately end the story."
+    ),
+    "adaptive": (
+        "- Always be aware of what is in the plot.\n"
+        "- Characters not yet introduced, twists not yet triggered, and key choices not yet presented may be naturally incorporated into the narrative — as a scene the player stumbles upon, a coincidental situation, or a movement of the world as a result of the player's actions.\n"
+        "- Key plot choices and twists must be triggered when the player touches a related action, location, or character.\n"
+        "- If you think of an ending candidate, you may end the story without seeking further developments.\n"
+        "- You may end the story when the protagonist's main desire or goal is fulfilled.\n"
+        "- When you find an opportunity to end the story, do not hesitate — prioritize conclusion over plot recovery.\n"
+        "- If the player's action deviates from the plot, show how the world has changed as a result of that action and lead toward an ending.\n"
+        "- If the player keeps repeating actions toward the same target with no sign of approaching the main conflict, you may depict the outcome of that fixation (failure, exhaustion, surrounding change, situation convergence) and lead toward a bad ending.\n"
+        "- If the player continues actions unrelated to the main conflict or goal for multiple turns with no sign of story progress, you may also lead toward an ending by depicting the convergence of that situation.\n"
+        "- If the player reaches a landing point that can serve as a story conclusion (a change in relationship, a decision, a return) in a place or situation unrelated to the main conflict, the GM may accept that as an ending.\n"
+        "- If a new goal, clue, or piece of information was presented in the previous turn, do not ignore it and immediately end the story.\n"
+        "- If the player explicitly refuses a target or direction (e.g., 'I ignore X', 'I don't go toward Y'), accept that refusal — the GM must not push the player toward that target."
+    ),
+    "strong": (
+        "- Key plot elements must remain in the story without exception.\n"
+        "- Even if the player's actions change the situation, the main conflicts, goals, and foreshadowing must be resolved in an alternate form.\n"
+        "- Key plot choices, twists, and misconceptions must be triggered when their timing arrives. Even if the player takes no related action, the world must bring them about.\n"
+        "- Do not refuse the player's free actions.\n"
+        "- Even if you think of an ending candidate, continue if the questions raised by the story (mystery, conflict, opposition) are not yet resolved.\n"
+        "- Continue the story as long as the main questions raised by the plot (mystery, conflict, opposition) remain unresolved.\n"
+        "- Beginning to face a conflict, challenging it, putting it on hold, deferring it, or returning to daily life does not count as resolving it.\n"
+        "- Resolution of a conflict means the parties involved have reached a clear conclusion, settlement, choice, reconciliation, parting, or victory/defeat, and the conflict no longer continues.\n"
+        "- 'Tomorrow', 'time passes', 'returning home', 'daily life', or 'a temporary rest' alone do not qualify as ending conditions. If major unresolved questions, conflicts, or opposition remain, advance to the next development.\n"
+        "- You may end the story when the protagonist's main desire or goal is fulfilled. However, mere information acquisition, temporary avoidance of a crisis, waiting, observation, maintaining the status quo, psychological preparation or resolve alone, or postponement of a problem do not count as fulfillment. Ending requires that the protagonist's state has changed irreversibly from the beginning: specifically, the protagonist made an important choice and transitioned to a new life or purpose, OR obtained a clear answer to the problem they were pursuing, OR the main plot conflict was resolved.\n"
+        "- In principle, the ending condition is the resolution of the main conflict. However, as an exception, you may end if the player has completely abandoned the conflict and the story is no longer progressing, or if the story has lost its continuation value.\n"
+        "- After the landing conditions are met, if the player keeps repeating the same action toward the same target, give no further meaning and transition promptly to the ending scene depiction.\n"
+        "- After the landing conditions are met, if the player keeps acting toward the same place or target without yielding new information or development, transition promptly to the ending scene depiction (even if the verb of the action changes)."
+    ),
+    "improv": (
+        "- You may treat it as an ending when the player achieves a goal they naturally created.\n"
+        "- When you find an opportunity to end the story, do not hesitate — prioritize conclusion over plot recovery.\n"
+        "- If the player keeps repeating actions toward the same target with no progress, you may depict the outcome of that fixation and lead toward an ending.\n"
+        "- If the player reaches a landing point that can serve as a story conclusion (a change in relationship, a decision, a return), accept that as an ending.\n"
+        "- If a new goal, clue, or piece of information was presented in the previous turn, do not ignore it and immediately end the story."
+    ),
+}
+
+
+def build_adaptive_replot_system_prompt(new_plot: dict, genre: str = "", language: str = "ja") -> str:
+    """Generate the lightweight system prompt used after adaptive-mode replotting.
+    Only the new landing point is passed; original plot beats, twists, etc. are not included.
     """
     lines = [SYSTEM_GM_BASE]
 
-    # adaptive再生成後はstrongと同等のルールを適用
-    mode_rule = PLOT_MODE_RULES.get("strong", "")
-    if mode_rule:
-        lines.append("【物語の軸】")
-        lines.append(mode_rule)
+    if language == "en":
+        lines[0] = SYSTEM_GM_BASE.replace("- 日本語で応答すること。日本語以外の混入禁止\n", "")
+
+    # After adaptive replot, apply the same rules as strong mode
+    if language == "en":
+        mode_rule = PLOT_MODE_RULES_EN.get("strong", "")
+        if mode_rule:
+            lines.append("[Story Axis]")
+            lines.append(mode_rule)
+    else:
+        mode_rule = PLOT_MODE_RULES.get("strong", "")
+        if mode_rule:
+            lines.append("【物語の軸】")
+            lines.append(mode_rule)
 
     if genre:
-        lines.append("【文体】")
-        lines.append(f"- ジャンル「{genre}」の読み手にとって自然な語り口・語彙の硬さ・文の長さで書く。")
+        if language == "en":
+            lines.append("[Style]")
+            lines.append(f"- Write in a register, vocabulary level, and sentence length natural for readers of the '{genre}' genre.")
+        else:
+            lines.append("【文体】")
+            lines.append(f"- ジャンル「{genre}」の読み手にとって自然な語り口・語彙の硬さ・文の長さで書く。")
 
     if new_plot:
         lines.append("")
-        lines.append("【新プロット（GMのみが知る設計図）】")
-        lines.append("※プレイヤーの逸脱を受けて再設計された物語の着地点。以下に向けて確実に完結させること。")
+        if language == "en":
+            lines.append("[New Plot (Blueprint known only to the GM)]")
+            lines.append("The story landing point redesigned after the player's deviation. Drive the story to a definitive conclusion toward the following.")
+        else:
+            lines.append("【新プロット（GMのみが知る設計図）】")
+            lines.append("※プレイヤーの逸脱を受けて再設計された物語の着地点。以下に向けて確実に完結させること。")
 
         if new_plot.get("protagonist_goal"):
-            lines.append(f"- 主人公の現在の目標: {new_plot['protagonist_goal']}")
+            if language == "en":
+                lines.append(f"- Protagonist's current goal: {new_plot['protagonist_goal']}")
+            else:
+                lines.append(f"- 主人公の現在の目標: {new_plot['protagonist_goal']}")
         if new_plot.get("key_npc"):
-            lines.append(f"- 重要NPC: {new_plot['key_npc']}")
+            if language == "en":
+                lines.append(f"- Key NPC: {new_plot['key_npc']}")
+            else:
+                lines.append(f"- 重要NPC: {new_plot['key_npc']}")
         if new_plot.get("climax_situation"):
-            lines.append(f"- クライマックス: {new_plot['climax_situation']}")
+            if language == "en":
+                lines.append(f"- Climax: {new_plot['climax_situation']}")
+            else:
+                lines.append(f"- クライマックス: {new_plot['climax_situation']}")
         if new_plot.get("ending_scene"):
-            lines.append(f"- 着地点（情景のみ）: {new_plot['ending_scene']}")
+            if language == "en":
+                lines.append(f"- Landing point (scene only): {new_plot['ending_scene']}")
+            else:
+                lines.append(f"- 着地点（情景のみ）: {new_plot['ending_scene']}")
 
         beats = new_plot.get("beats", [])
         if beats:
             lines.append("")
-            lines.append("【展開の流れ（ビート）】")
+            if language == "en":
+                lines.append("[Story Beats]")
+            else:
+                lines.append("【展開の流れ（ビート）】")
             for b in beats:
                 if isinstance(b, dict):
                     timing = b.get("timing", "")
                     desc = b.get("description", "")
                     lines.append(f"- {timing}: {desc}")
 
+    if language == "en":
+        lines.append("")
+        lines.append("Write all output in English. Do not mix in any other language.")
+
     return "\n".join(lines)
 
 
 def build_system_prompt(plot: dict, plot_mode: str = "off", genre: str = "", language: str = "ja") -> str:
-    """genre_traitsとplot_modeを反映した動的システムプロンプトを生成する。
-    strongモードではビート注入方式を使うため、【反転】【失敗・挫折】【重要選択】【思い込みと真実】節は除外する。
-    language="en" のとき、末尾に英語出力指示を追加する。
+    """Generate the dynamic system prompt reflecting genre_traits and plot_mode.
+    In strong mode, beat injection is used, so [Twists], [Failures and Setbacks], [Key Choices],
+    and [Misconceptions and Truth] sections are excluded.
+    When language='en', the English output instruction is appended at the end.
     """
     _beat_injection_mode = (plot_mode == "strong")
     traits = plot.get("genre_traits", {})
     base = SYSTEM_GM_BASE
     if language == "en":
-        # 英語モード時は日本語応答強制行を除去（末尾で英語指示を追加するため）
+        # In EN mode, remove the Japanese-only response line (EN instruction is appended at the end)
         base = base.replace("- 日本語で応答すること。日本語以外の混入禁止\n", "")
     lines = [base]
 
-    mode_rule = PLOT_MODE_RULES.get(plot_mode, "")
-    if mode_rule:
-        lines.append("【物語の軸】")
-        lines.append(mode_rule)
+    if language == "en":
+        mode_rule = PLOT_MODE_RULES_EN.get(plot_mode, "")
+        if mode_rule:
+            lines.append("[Story Axis]")
+            lines.append(mode_rule)
+    else:
+        mode_rule = PLOT_MODE_RULES.get(plot_mode, "")
+        if mode_rule:
+            lines.append("【物語の軸】")
+            lines.append(mode_rule)
 
     style = plot.get("style") if isinstance(plot, dict) else ""
-    lines.append("【文体】")
-    if style:
-        lines.append(f"- {style}")
-        lines.append("- 上の文体を地の文・セリフの両方で毎ターン守る。説明的・抽象的・文語的な言い回しに寄せない")
-        lines.append("- 文体指示が地の文ルール（感情・内面・意味付けの禁止）と衝突する場合は、地の文ルールを優先する")
-    elif genre:
-        lines.append(f"- ジャンル「{genre}」の読み手にとって自然な語り口・語彙の硬さ・文の長さで書く。そのジャンルの読み手に難しい言葉や、抽象的で文語的な言い回しは使わない")
-
-    lines.append("【ジャンル制約】")
-
-    if not traits.get("combat", True):
-        lines.append("- このジャンルでは戦闘・脅威・敵の出現は原則禁止。物語に登場させない")
+    if language == "en":
+        lines.append("[Style]")
+        if style:
+            lines.append(f"- {style}")
+            lines.append("- Follow the style above in both narration and dialogue every turn. Do not drift toward explanatory, abstract, or literary-register phrasing.")
+            lines.append("- If the style instruction conflicts with the narration rules (prohibition of emotion, inner life, or thematic interpretation), the narration rules take priority.")
+        elif genre:
+            lines.append(f"- Write in a register, vocabulary level, and sentence length natural for readers of the '{genre}' genre. Avoid difficult vocabulary or abstract literary phrasing inappropriate for that genre's readership.")
     else:
-        lines.append("- 対立するNPC・敵は受動的な脅威の提示に留めず、実際に攻撃を行い、その結果として主人公が損害を受ける可能性がある描写を含めること")
+        lines.append("【文体】")
+        if style:
+            lines.append(f"- {style}")
+            lines.append("- 上の文体を地の文・セリフの両方で毎ターン守る。説明的・抽象的・文語的な言い回しに寄せない")
+            lines.append("- 文体指示が地の文ルール（感情・内面・意味付けの禁止）と衝突する場合は、地の文ルールを優先する")
+        elif genre:
+            lines.append(f"- ジャンル「{genre}」の読み手にとって自然な語り口・語彙の硬さ・文の長さで書く。そのジャンルの読み手に難しい言葉や、抽象的で文語的な言い回しは使わない")
 
-    if not traits.get("mystery", True):
-        lines.append("- このジャンルでは謎解き要素は不要。プロットにない謎を出さない")
+    if language == "en":
+        lines.append("[Genre Constraints]")
+        if not traits.get("combat", True):
+            lines.append("- In this genre, combat, threats, and enemy encounters are prohibited in principle. Do not introduce them into the story.")
+        else:
+            lines.append("- Opposing NPCs and enemies must not merely present passive threats — include depictions where they actively attack and the protagonist may take damage as a result.")
+
+        if not traits.get("mystery", True):
+            lines.append("- In this genre, mystery elements are unnecessary. Do not introduce mysteries not in the plot.")
+        else:
+            lines.append("- Do not introduce mysteries not in the plot.")
+
+        if not traits.get("exploration", True):
+            lines.append("- In this genre, exploration elements are unnecessary.")
+
+        if not traits.get("inventory", True):
+            lines.append("- In this genre, the concept of inventory does not exist. Do not manage inventory even if asked.")
+
+        if traits.get("romance", False):
+            lines.append("- Depict the relationships and emotional changes between the protagonist and other characters with care.")
+
+        if traits.get("comedy", False):
+            lines.append("- Actively incorporate humor and light-hearted exchanges.")
     else:
-        lines.append("- プロットにない謎を出さない")
+        lines.append("【ジャンル制約】")
+        if not traits.get("combat", True):
+            lines.append("- このジャンルでは戦闘・脅威・敵の出現は原則禁止。物語に登場させない")
+        else:
+            lines.append("- 対立するNPC・敵は受動的な脅威の提示に留めず、実際に攻撃を行い、その結果として主人公が損害を受ける可能性がある描写を含めること")
 
-    if not traits.get("exploration", True):
-        lines.append("- このジャンルでは探索要素は不要")
+        if not traits.get("mystery", True):
+            lines.append("- このジャンルでは謎解き要素は不要。プロットにない謎を出さない")
+        else:
+            lines.append("- プロットにない謎を出さない")
 
-    if not traits.get("inventory", True):
-        lines.append("- このジャンルでは所持品の概念は存在しない。所持品を聞かれても管理しない")
+        if not traits.get("exploration", True):
+            lines.append("- このジャンルでは探索要素は不要")
 
-    if traits.get("romance", False):
-        lines.append("- 登場キャラクターとの関係性・感情の変化を丁寧に描写する")
+        if not traits.get("inventory", True):
+            lines.append("- このジャンルでは所持品の概念は存在しない。所持品を聞かれても管理しない")
 
-    if traits.get("comedy", False):
-        lines.append("- ユーモアや軽妙なやりとりを積極的に取り入れる")
+        if traits.get("romance", False):
+            lines.append("- 登場キャラクターとの関係性・感情の変化を丁寧に描写する")
 
-        # プロット情報をシステムプロンプトへ注入
+        if traits.get("comedy", False):
+            lines.append("- ユーモアや軽妙なやりとりを積極的に取り入れる")
+
+    # Inject plot information into the system prompt
     if plot:
         protagonist = plot.get("protagonist", {})
         characters = plot.get("characters", [])
         ending = plot.get("ending", "")
         hook = plot.get("hook", {})
         lines.append("")
-        lines.append("【プロット（GMのみが知る設計図）】")
-        lines.append("事実はNPCが台詞で言ってよいが、その事実が主人公にとって何を意味するかはNPCも地の文も言わないこと。")
+        if language == "en":
+            lines.append("[Plot (Blueprint known only to the GM)]")
+            lines.append("Facts may be stated by NPCs in dialogue, but neither NPCs nor narration may say what those facts mean to the protagonist.")
+        else:
+            lines.append("【プロット（GMのみが知る設計図）】")
+            lines.append("事実はNPCが台詞で言ってよいが、その事実が主人公にとって何を意味するかはNPCも地の文も言わないこと。")
 
         if protagonist:
-            lines.append(
-                f"- 主人公: {protagonist.get('name','')}"
-            )
-            lines.append(
-                f"- 表層ゴール: {protagonist.get('goal_surface','')}"
-            )
+            if language == "en":
+                lines.append(f"- Protagonist: {protagonist.get('name','')}")
+                lines.append(f"- Surface Goal: {protagonist.get('goal_surface','')}")
+            else:
+                lines.append(f"- 主人公: {protagonist.get('name','')}")
+                lines.append(f"- 表層ゴール: {protagonist.get('goal_surface','')}")
 
         if characters:
-            lines.append("- 登場人物:")
+            if language == "en":
+                lines.append("- Characters:")
+            else:
+                lines.append("- 登場人物:")
             for c in characters:
                 if isinstance(c, dict):
                     if "name" in c or "role" in c:
-                        # 標準形式: {"name": "...", "role": "..."}
                         name = c.get("name", "").strip()
                         role = c.get("role", "")
                     else:
-                        # role名がキーの形式: {"sword_master": "説明文"}
+                        # role-key format: {"sword_master": "description"}
                         items = [(k, v) for k, v in c.items() if isinstance(v, str)]
                         if items:
                             role_key, role_desc = items[0]
@@ -374,32 +615,54 @@ def build_system_prompt(plot: dict, plot_mode: str = "off", genre: str = "", lan
                         lines.append(f"  - {name}: {role}")
 
         if hook.get("opening"):
-            lines.append(f"- 冒頭フック: {hook['opening']}")
+            if language == "en":
+                lines.append(f"- Opening Hook: {hook['opening']}")
+            else:
+                lines.append(f"- 冒頭フック: {hook['opening']}")
 
         if hook.get("closing"):
-            lines.append(f"- フック回収: {hook['closing']}（着地点の描写に含めること）")
+            if language == "en":
+                lines.append(f"- Hook Resolution: {hook['closing']} (include in the ending scene depiction)")
+            else:
+                lines.append(f"- フック回収: {hook['closing']}（着地点の描写に含めること）")
 
         if ending:
-            lines.append(f"- 着地点（情景のみ。動機・感情・テーマ語は含めない）: {ending}")
+            if language == "en":
+                lines.append(f"- Landing Point (scene only; no motivation, emotion, or thematic words): {ending}")
+            else:
+                lines.append(f"- 着地点（情景のみ。動機・感情・テーマ語は含めない）: {ending}")
 
         if not _beat_injection_mode:
             choices = plot.get("choices", [])
             if choices and isinstance(choices, list):
                 lines.append("")
-                lines.append("【重要選択】")
+                if language == "en":
+                    lines.append("[Key Choices]")
+                else:
+                    lines.append("【重要選択】")
                 for c in choices:
                     if isinstance(c, dict):
-                        lines.append(
-                            f"- {c.get('timing','')}: "
-                            f"{c.get('description','')} "
-                            f"(代償: {c.get('cost','')})"
-                        )
+                        if language == "en":
+                            lines.append(
+                                f"- {c.get('timing','')}: "
+                                f"{c.get('description','')} "
+                                f"(cost: {c.get('cost','')})"
+                            )
+                        else:
+                            lines.append(
+                                f"- {c.get('timing','')}: "
+                                f"{c.get('description','')} "
+                                f"(代償: {c.get('cost','')})"
+                            )
 
         if not _beat_injection_mode:
             twists = plot.get("twists", [])
             if twists and isinstance(twists, list):
                 lines.append("")
-                lines.append("【反転】（タイミング通りに発生させること）")
+                if language == "en":
+                    lines.append("[Twists] (trigger at the designated timing)")
+                else:
+                    lines.append("【反転】（タイミング通りに発生させること）")
                 for t in twists:
                     if isinstance(t, dict):
                         lines.append(
@@ -410,88 +673,112 @@ def build_system_prompt(plot: dict, plot_mode: str = "off", genre: str = "", lan
         climax = plot.get("climax", {})
         if climax:
             lines.append("")
-            lines.append("【クライマックス】")
-            lines.append(
-                f"- 舞台: {climax.get('setting','')}"
-            )
-            if climax.get('conflict_type'):
-                lines.append(
-                    f"- 対立の種類: {climax.get('conflict_type','')}"
-                )
-            lines.append(
-                f"- 喪失: {climax.get('loss','')}"
-            )
-            lines.append(
-                f"- 獲得: {climax.get('gain','')}"
-            )
-            lines.append(
-                f"- 感情ピーク: {climax.get('peak','')}"
-            )
+            if language == "en":
+                lines.append("[Climax]")
+                lines.append(f"- Setting: {climax.get('setting','')}")
+                if climax.get('conflict_type'):
+                    lines.append(f"- Conflict Type: {climax.get('conflict_type','')}")
+                lines.append(f"- Loss: {climax.get('loss','')}")
+                lines.append(f"- Gain: {climax.get('gain','')}")
+                lines.append(f"- Emotional Peak: {climax.get('peak','')}")
+            else:
+                lines.append("【クライマックス】")
+                lines.append(f"- 舞台: {climax.get('setting','')}")
+                if climax.get('conflict_type'):
+                    lines.append(f"- 対立の種類: {climax.get('conflict_type','')}")
+                lines.append(f"- 喪失: {climax.get('loss','')}")
+                lines.append(f"- 獲得: {climax.get('gain','')}")
+                lines.append(f"- 感情ピーク: {climax.get('peak','')}")
 
         subplot = plot.get("subplot")
         if subplot:
             lines.append("")
-            lines.append("【サブプロット】")
+            if language == "en":
+                lines.append("[Subplot]")
+            else:
+                lines.append("【サブプロット】")
             lines.append(f"- {subplot}")
 
         genre_weave = plot.get("genre_weave")
         if genre_weave:
             lines.append("")
-            lines.append("【ジャンルの織り込み方】")
+            if language == "en":
+                lines.append("[Genre Weave]")
+            else:
+                lines.append("【ジャンルの織り込み方】")
             lines.append(f"- {genre_weave}")
 
         title_weave = plot.get("title_weave", {})
         if title_weave:
             lines.append("")
-            lines.append("【タイトルの接続】")
-            if title_weave.get("early"):
-                lines.append(f"- 序盤: {title_weave['early']}")
-            if title_weave.get("mid"):
-                lines.append(f"- 中盤: {title_weave['mid']}")
-            if title_weave.get("late"):
-                lines.append(f"- 終盤: {title_weave['late']}")
+            if language == "en":
+                lines.append("[Title Connection]")
+                if title_weave.get("early"):
+                    lines.append(f"- Early: {title_weave['early']}")
+                if title_weave.get("mid"):
+                    lines.append(f"- Mid: {title_weave['mid']}")
+                if title_weave.get("late"):
+                    lines.append(f"- Late: {title_weave['late']}")
+            else:
+                lines.append("【タイトルの接続】")
+                if title_weave.get("early"):
+                    lines.append(f"- 序盤: {title_weave['early']}")
+                if title_weave.get("mid"):
+                    lines.append(f"- 中盤: {title_weave['mid']}")
+                if title_weave.get("late"):
+                    lines.append(f"- 終盤: {title_weave['late']}")
 
         conflicts = plot.get("conflicts", [])
         if conflicts and isinstance(conflicts, list):
             lines.append("")
-            lines.append("【対立構造】")
+            if language == "en":
+                lines.append("[Conflict Structure]")
+            else:
+                lines.append("【対立構造】")
             for c in conflicts:
                 if isinstance(c, dict):
-                    lines.append(
-                        f"- {c.get('type','')}: {c.get('content','')}"
-                    )
+                    lines.append(f"- {c.get('type','')}: {c.get('content','')}")
 
         if not _beat_injection_mode:
             failures = plot.get("failures", [])
             if failures and isinstance(failures, list):
                 lines.append("")
-                lines.append("【失敗・挫折】（タイミング通りに発生させること）")
+                if language == "en":
+                    lines.append("[Failures and Setbacks] (trigger at the designated timing)")
+                else:
+                    lines.append("【失敗・挫折】（タイミング通りに発生させること）")
                 for f in failures:
                     if isinstance(f, dict):
-                        lines.append(
-                            f"- {f.get('timing','')}: {f.get('content','')}"
-                        )
+                        lines.append(f"- {f.get('timing','')}: {f.get('content','')}")
 
         if not _beat_injection_mode:
             misconceptions = plot.get("misconceptions", [])
             if misconceptions and isinstance(misconceptions, list):
                 lines.append("")
-                lines.append("【思い込みと真実】")
+                if language == "en":
+                    lines.append("[Misconceptions and Truth]")
+                else:
+                    lines.append("【思い込みと真実】")
                 for m in misconceptions:
                     if isinstance(m, dict):
-                        lines.append(
-                            f"- {m.get('timing','')}: {m.get('content','')}"
-                        )
+                        lines.append(f"- {m.get('timing','')}: {m.get('content','')}")
 
-        # risks・theme_closure は内面・抽象語を含むためGMには渡さない（NPCテーマ代弁を誘発するため）
+        # risks and theme_closure are not passed to the GM as they contain inner/abstract language
+        # that triggers NPC thematic commentary
 
         ending_note = plot.get("ending_note", {})
         if ending_note:
             lines.append("")
-            lines.append("【末尾の回収と余韻】")
-            if ending_note.get("hook_resolution"):
-                lines.append(f"- フック回収: {ending_note['hook_resolution']}（着地点の描写に含めること）")
-            # theme_closure は内面・抽象語を含むためGMには渡さない
+            if language == "en":
+                lines.append("[Closing Hook and Resonance]")
+                if ending_note.get("hook_resolution"):
+                    lines.append(f"- Hook Resolution: {ending_note['hook_resolution']} (include in the ending scene depiction)")
+                # theme_closure is not passed to GM as it contains inner/abstract language
+            else:
+                lines.append("【末尾の回収と余韻】")
+                if ending_note.get("hook_resolution"):
+                    lines.append(f"- フック回収: {ending_note['hook_resolution']}（着地点の描写に含めること）")
+                # theme_closure is not passed to GM as it contains inner/abstract language
 
     if language == "en":
         lines.append("")
@@ -499,27 +786,99 @@ def build_system_prompt(plot: dict, plot_mode: str = "off", genre: str = "", lan
 
     return "\n".join(lines)
 
-def build_plot_message(genre: str, title: str) -> str:
+
+def build_plot_message(genre: str, title: str, language: str = "ja") -> str:
+    """Build the user message that triggers plot generation."""
+    if language == "en":
+        return f"Genre: {genre}\nTitle: {title}\n\nPlease design the story."
     return f"ジャンル: {genre}\nタイトル: {title}\n\n物語設計を行ってください。"
 
-def build_start_message(genre: str, title: str, plot: dict) -> str:
+
+def build_start_message(genre: str, title: str, plot: dict, language: str = "ja") -> str:
+    """Build the opening user message that triggers the GM's first scene."""
     protagonist = plot.get("protagonist", {})
     hook = plot.get("hook", {}).get("opening", "")
-    chars = "、".join(c.get("name", "").strip(": ").strip() for c in plot.get("characters", []) if isinstance(c, dict))
-
     style = plot.get("style", "")
-    style_line = f"文体: {style}\n" if style else ""
 
-    # improvモード（plotが空）のとき、GMが情報要求せず自力で開始できるよう指示する
-    if not plot:
+    if language == "en":
+        chars = ", ".join(
+            c.get("name", "").strip(": ").strip()
+            for c in plot.get("characters", [])
+            if isinstance(c, dict)
+        )
+        style_line = f"Style: {style}\n" if style else ""
+
+        # Improv mode (empty plot): give instructions so GM starts without requesting information
+        if not plot:
+            return (
+                f"Genre: {genre}\n"
+                f"Title: {title}\n\n"
+                "Please generate the opening game scene.\n\n"
+                "Important:\n"
+                "- You may freely set the protagonist, characters, and opening situation yourself. Do not ask the player for information.\n"
+                "- Do not move the protagonist.\n"
+                "- Do not give the protagonist dialogue.\n"
+                "- Do not write the protagonist's emotions.\n"
+                "- Do not decide the protagonist's goal.\n"
+                "- Depict only NPCs and the situation.\n"
+                "- Describe only the state of the world.\n"
+                "- End in a state where the player can act freely.\n"
+                "- Do not determine any of the protagonist's actions.\n"
+            )
+
+        return (
+            f"Genre: {genre}\n"
+            f"Title: {title}\n"
+            f"{style_line}\n"
+            f"Characters: {chars}\n"
+            f"Protagonist: {protagonist.get('name', '')}\n"
+            f"Opening Hook: {hook}\n\n"
+            "Please generate the opening game scene.\n\n"
+            "Important:\n"
+            "- Do not move the protagonist.\n"
+            "- Do not give the protagonist dialogue.\n"
+            "- Do not write the protagonist's emotions.\n"
+            "- Do not decide the protagonist's goal.\n"
+            "- Depict only NPCs and the situation.\n"
+            "- Describe only the state of the world.\n"
+            "- End in a state where the player can act freely.\n"
+            "- Do not determine any of the protagonist's actions.\n"
+        )
+    else:
+        chars = "、".join(
+            c.get("name", "").strip(": ").strip()
+            for c in plot.get("characters", [])
+            if isinstance(c, dict)
+        )
+        style_line = f"文体: {style}\n" if style else ""
+
+        # Improv mode (empty plot): give instructions so GM starts without requesting information
+        if not plot:
+            return (
+                f"ジャンル: {genre}\n"
+                f"タイトル: {title}\n\n"
+                "ゲーム開始シーンを生成してください。\n\n"
+                "重要:\n"
+                "- 主人公・登場人物・冒頭の状況はあなたが自由に設定してよい。プレイヤーへの情報確認は行わない\n"
+                "- 主人公を動かしてはいけない\n"
+                "- 主人公に発言させてはいけない\n"
+                "- 主人公の感情を書いてはいけない\n"
+                "- 主人公の目的を決めてはいけない\n"
+                "- NPCと状況だけ描写する\n"
+                "- 世界の状態だけ説明する\n"
+                "- 最後はプレイヤーが自由に行動できる状態で止める\n"
+                "- 主人公の行動を一切決定しない\n"
+            )
+
         return (
             f"ジャンル: {genre}\n"
-            f"タイトル: {title}\n\n"
-
+            f"タイトル: {title}\n"
+            f"{style_line}\n"
+            f"登場人物: {chars}\n"
+            f"主人公: {protagonist.get('name', '')}\n"
+            f"冒頭フック: {hook}\n\n"
             "ゲーム開始シーンを生成してください。\n\n"
-
             "重要:\n"
-            "- 主人公・登場人物・冒頭の状況はあなたが自由に設定してよい。プレイヤーへの情報確認は行わない\n"
             "- 主人公を動かしてはいけない\n"
             "- 主人公に発言させてはいけない\n"
             "- 主人公の感情を書いてはいけない\n"
@@ -529,24 +888,3 @@ def build_start_message(genre: str, title: str, plot: dict) -> str:
             "- 最後はプレイヤーが自由に行動できる状態で止める\n"
             "- 主人公の行動を一切決定しない\n"
         )
-
-    return (
-        f"ジャンル: {genre}\n"
-        f"タイトル: {title}\n"
-        f"{style_line}\n"
-        f"登場人物: {chars}\n"
-        f"主人公: {protagonist.get('name', '')}\n"
-        f"冒頭フック: {hook}\n\n"
-
-        "ゲーム開始シーンを生成してください。\n\n"
-
-        "重要:\n"
-        "- 主人公を動かしてはいけない\n"
-        "- 主人公に発言させてはいけない\n"
-        "- 主人公の感情を書いてはいけない\n"
-        "- 主人公の目的を決めてはいけない\n"
-        "- NPCと状況だけ描写する\n"
-        "- 世界の状態だけ説明する\n"
-        "- 最後はプレイヤーが自由に行動できる状態で止める\n"
-        "- 主人公の行動を一切決定しない\n"
-    )
