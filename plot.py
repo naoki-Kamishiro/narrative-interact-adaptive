@@ -8,7 +8,7 @@ import re
 import sys
 from json_repair import repair_json
 from api import chat_json
-from prompt import SYSTEM_PLOT, build_plot_message
+from prompt import SYSTEM_PLOT, SYSTEM_PLOT_EN, build_plot_message
 from display import system_print
 
 DEBUG_MODE: bool = False
@@ -20,9 +20,10 @@ def generate(genre: str, title: str, language: str = "ja") -> dict:
         system_print("Generating plot...")
     else:
         system_print("プロットを生成中...")
+    system_plot = SYSTEM_PLOT_EN if language == "en" else SYSTEM_PLOT
     messages = [
-        {"role": "system", "content": SYSTEM_PLOT},
-        {"role": "user",   "content": build_plot_message(genre, title)},
+        {"role": "system", "content": system_plot},
+        {"role": "user",   "content": build_plot_message(genre, title, language=language)},
     ]
     for attempt in range(1, MAX_RETRIES + 1):
         raw = chat_json(messages, language=language)
