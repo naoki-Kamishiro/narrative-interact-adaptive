@@ -1,11 +1,12 @@
 """
-ダイス判定モジュール。
-行動がダイス判定を必要とするかをLLMに問い合わせ、
-必要なら1d20を振って結果を返す。
+Dice-roll judgment module.
+Asks the LLM whether a player action requires a dice roll,
+then rolls 1d20 and returns the result if needed.
 
-難易度はLLMに直接数値を出させず、risk/uncertaintyの2軸を
-low/mid/highで分類させ、Python側で決定論的に難易度へ変換する。
-これにより、行動説明文の長さや複雑さに難易度が引きずられることを防ぐ。
+Difficulty is not output directly by the LLM; instead, risk and uncertainty
+are each classified as low/mid/high, and Python converts them to a numeric
+difficulty deterministically — preventing action text length or complexity
+from skewing the difficulty rating.
 """
 
 import json
@@ -68,11 +69,11 @@ risk: severity of failure consequence (low=minor, mid=moderate, high=severe)
 uncertainty: how unpredictable the outcome is (low=near-certain, mid=50-50, high=very uncertain)
 """
 
-# risk/uncertaintyの組み合わせから難易度を決定論的に算出するテーブル
+# Table for deterministically computing difficulty from risk/uncertainty combinations
 _LEVEL_VALUE = {"low": -2, "mid": 0, "high": 2}
-_BASE_DIFFICULTY = 7  # d20で約65%の成功率を基準にする
+_BASE_DIFFICULTY = 7  # Baseline: ~65% success rate on d20
 
-# 難易度プリセット（起動時のプレイヤー選択でオフセットを加える）
+# Difficulty presets (offset added by player selection at startup)
 DIFFICULTY_PRESETS = {
     "easy": -2,
     "normal": 0,
@@ -81,7 +82,7 @@ DIFFICULTY_PRESETS = {
 _difficulty_offset = 0  # main.pyから設定される
 
 def set_difficulty_preset(preset: str) -> None:
-    """起動時に難易度プリセットを設定する。"""
+    """Set the difficulty preset at startup."""
     global _difficulty_offset
     _difficulty_offset = DIFFICULTY_PRESETS.get(preset, 0)
 
@@ -89,7 +90,7 @@ def roll_d20() -> int:
     return random.randint(1, 20)
 
 def _determine_intensity(dice: int, difficulty: int) -> str:
-    """出目と難易度のマージンから結果の強度を判定する。"""
+    """Determine result intensity from the margin between roll and difficulty."""
     margin = dice - difficulty
     if margin >= 8:
         return "decisive"
@@ -99,14 +100,14 @@ def _determine_intensity(dice: int, difficulty: int) -> str:
         return "severe"
 
 def _compute_difficulty(risk: str, uncertainty: str) -> int:
-    """risk/uncertaintyの2軸から難易度をローカルで決定論的に計算する。"""
+    """Deterministically compute difficulty from the risk and uncertainty axes."""
     risk_v = _LEVEL_VALUE.get(risk, 0)
     unc_v = _LEVEL_VALUE.get(uncertainty, 0)
     difficulty = _BASE_DIFFICULTY + risk_v + unc_v + _difficulty_offset
     return max(6, min(18, difficulty))
 
 def judge(action: str, history: list, language: str = "ja") -> dict | None:
-    # 直近のGM応答を文脈として渡す（状況依存の判定精度向上のため）
+    # Pass the most recent GM response as context (improves situation-aware judgment)
     last_gm = next(
         (m["content"] for m in reversed(history) if m["role"] == "assistant"),
         None
@@ -164,7 +165,7 @@ def judge(action: str, history: list, language: str = "ja") -> dict | None:
     }
 
 def display_result(result: dict, language: str = "ja") -> None:
-    """ダイス結果をコンソールに表示する。"""
+    """Display the dice roll result to the console."""
     if language == "en":
         outcome = "Success" if result["success"] else "Failure"
         intensity_label = {
