@@ -260,3 +260,36 @@ for i, line in enumerate(sys.stdin, 1):
 4. GitHubのReleasesページでリリースを作成
 
 過去のタグは残す（古いバージョンへのアクセス維持）。**動作試験が完了するまでリリースしない。**
+
+---
+
+## 英語化対応方針（v1.1.0実装済み）
+
+**基本方針：最小変更。内部処理は日本語のまま、出力だけ英語化。**
+
+### 言語フラグ
+- `LANGUAGE`（手動プレイ）/ `BATCH_LANGUAGE`（バッチ）：`"ja"`または`"en"`、デフォルトは`"ja"`
+- 起動時に日本語/英語を選択するメニューを追加
+
+### 内部処理（常に日本語）
+以下はENモードでも一切変更しない：
+- GMシステムプロンプト（`SYSTEM_GM_BASE`、`PLOT_MODE_RULES`）
+- プロット生成・ビート injection・逸脱検出・再生成プロンプト
+- ダイス判定プロンプト
+- 会話履歴（history）・セーブデータ
+
+### ENモードでの変更箇所
+- `build_system_prompt()` 末尾に1行追加：`"Write all output in English. Do not mix in any other language."`
+- プレイヤー向けUIを英語化（メニュー・システムメッセージ・エラー表示）
+- `PLAYER_SYSTEM_NORMAL/DEVIATE` → 英語版プロンプトに切り替え
+- GMキャラクタープロンプト → 英語版に切り替え
+- ダイス表示（`display_result()`）→ 成功/失敗を英語表示
+- ビートinjection → 英語テンプレート（`_TEMPLATES_EN`）に切り替え
+
+### エンディングマーカー
+`ENDING_MARKER = "[Ending]"` でJA/EN共通化。JA・ENどちらのinjectionでも`[Ending]`を使用。
+
+### 禁止事項
+- ENモードでプレイヤーに見える箇所に日本語を出力しない（例外なし）
+- 内部プロンプト・履歴・ログを英語化しない（再調整コスト・検証コストが高いため）
+- GMシステムプロンプト全体を英語版として複製しない（二重管理を避ける）
